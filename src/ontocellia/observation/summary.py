@@ -14,6 +14,7 @@ def export_summary(runtime, output_dir: str | Path) -> Path:
     output_path.mkdir(parents=True, exist_ok=True)
     payload = {
         "mode": runtime.mode,
+        "project_kind": "developmental_agent_framework",
         "config": runtime.config.as_dict(),
         "tick": runtime.tick_count,
         "population": len(runtime.cells),
@@ -23,8 +24,23 @@ def export_summary(runtime, output_dir: str | Path) -> Path:
         "lineage": runtime.lineage_edges,
         "genes": [gene.name for gene in runtime.gene_registry.genes],
         "phenotypes": runtime.phenotype_counts(),
+        "communities": {
+            str(community_id): {
+                "member_ids": community.member_ids,
+                "signal_pool": community.signal_pool,
+                "cohesion": community.cohesion,
+            }
+            for community_id, community in getattr(runtime, "communities", {}).items()
+        },
     }
     if runtime.mode != LEGACY_MODE and runtime.genome_spec is not None and runtime.environment_spec is not None:
+        payload["framework"] = {
+            "genome_program": "GenomeProgram",
+            "fate_landscape": "FateLandscape",
+            "life_process_model": "LifeProcessModel",
+            "organ_selection_field": "OrganSelectionField",
+            "runtime_adapter": type(runtime).__name__,
+        }
         payload["genome_spec"] = {
             "name": runtime.genome_spec.metadata.name,
             "path": str(runtime.genome_spec.source_path) if runtime.genome_spec.source_path else None,
@@ -111,6 +127,7 @@ def plot_fate_timeline(runtime, output_dir: str | Path) -> Path:
         ax.plot(ticks, [row["division_pressure"] for row in history], label="division_pressure")
         ax.plot(ticks, [row["risk_exposure"] for row in history], label="risk_exposure")
         ax.plot(ticks, [row.get("contact_inhibition", 0.0) for row in history], label="contact_inhibition")
+        ax.plot(ticks, [row.get("communities", 0) for row in history], label="communities")
         attractor_labels = sorted({label for row in history for label in row.get("attractor_occupancy", {}).keys()})
         for label in attractor_labels:
             series = [row.get("attractor_occupancy", {}).get(label, 0.0) for row in history]

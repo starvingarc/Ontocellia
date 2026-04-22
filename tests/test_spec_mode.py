@@ -6,9 +6,20 @@ import subprocess
 import sys
 from pathlib import Path
 
+import numpy as np
 import yaml
 
-from ontocellia import OntocelliaConfig, OntocelliaRuntime, load_environment_spec, load_genome_spec
+from ontocellia import (
+    EnvironmentModel,
+    FateLandscape,
+    GenomeProgram,
+    OntocelliaConfig,
+    OntocelliaRuntime,
+    OrganSelectionField,
+    load_environment_spec,
+    load_genome_spec,
+)
+from ontocellia.compiler import EnvironmentBuilder, GenomeSpecCompiler
 from ontocellia.specs.schema import EnvironmentSpec, GenomeSpec
 
 
@@ -84,7 +95,7 @@ def test_environment_task_translation_materially_changes_fields_and_coverage() -
     calm_environment_data["metadata"]["name"] = "calm-environment"
     calm_environment_data["task_translation"]["goal_zones"] = []
     calm_environment_data["task_translation"]["risk_zones"] = []
-    calm_environment_data["events"] = []
+    calm_environment_data["spatial_environment"]["events"] = []
     calm_environment = EnvironmentSpec.from_dict(calm_environment_data)
 
     active_runtime = OntocelliaRuntime.from_specs(genome, environment, sim_config=OntocelliaConfig(seed=13))
@@ -143,7 +154,7 @@ def test_mechanical_background_context_changes_repair_activation() -> None:
     base_environment_data = yaml.safe_load(ENVIRONMENT_PATH.read_text(encoding="utf-8"))
     high_mech_environment_data = yaml.safe_load(ENVIRONMENT_PATH.read_text(encoding="utf-8"))
     high_mech_environment_data["metadata"]["name"] = "high-mechanics"
-    high_mech_environment_data["background_context"]["mechanical_stress"]["initial"] = {"pattern": "constant", "value": 0.8}
+    high_mech_environment_data["spatial_environment"]["background_context"]["mechanical_stress"]["initial"] = {"pattern": "constant", "value": 0.8}
 
     base_runtime = OntocelliaRuntime.from_specs(genome, EnvironmentSpec.from_dict(base_environment_data), sim_config=OntocelliaConfig(seed=8))
     high_mech_runtime = OntocelliaRuntime.from_specs(genome, EnvironmentSpec.from_dict(high_mech_environment_data), sim_config=OntocelliaConfig(seed=8))
@@ -195,3 +206,74 @@ def test_cli_supports_legacy_and_spec_modes(tmp_path: Path) -> None:
     assert legacy_summary["mode"] == "legacy"
     assert spec_summary["mode"] == "spec"
     assert "genome_spec" in spec_summary
+
+
+def test_framework_components_construct_without_runtime() -> None:
+    genome = load_genome_spec(GENOME_PATH)
+    environment = load_environment_spec(ENVIRONMENT_PATH)
+    built = EnvironmentBuilder().build(environment)
+    compiled = GenomeSpecCompiler().compile(genome, built.field_names)
+
+    model = EnvironmentModel.from_built_environment(environment, built)
+    program = GenomeProgram(OntocelliaConfig(seed=3), compiled)
+    landscape = FateLandscape(OntocelliaConfig(seed=3), compiled)
+    selection = OrganSelectionField()
+
+    assert model.global_environment.task_goal
+    assert program.compiled_genome is compiled
+    assert landscape.compiled_genome is compiled
+    assert selection.strength > 0
+
+
+def test_environment_spec_exposes_global_and_spatial_layers() -> None:
+    environment = load_environment_spec(ENVIRONMENT_PATH)
+
+    assert environment.global_environment.task_goal.text
+    assert environment.global_environment.evaluation.metrics["min_coverage"] == 0.25
+    assert environment.spatial_environment.grid.width == 32
+    assert {"M1", "M2", "M3"} <= set(environment.spatial_environment.diffusive_fields)
+
+
+def test_receptor_profile_and_history_influence_state_update() -> None:
+    runtime = OntocelliaRuntime.from_spec_files(GENOME_PATH, ENVIRONMENT_PATH, sim_config=OntocelliaConfig(seed=17))
+    runtime.graph.rebuild(runtime.cells)
+    cell = next(iter(runtime.cells.values()))
+    local_fields = runtime.environment.sample(cell.pos)
+    gradients = runtime.environment.gradients(cell.pos)
+    neighbor_summary = runtime.graph.summary_for(cell.id, runtime.cells, runtime.config.desired_local_density)
+    baseline = runtime.kernel.step(cell, local_fields, gradients, neighbor_summary, {})
+
+    cell_low = cell.clone(9000, cell.pos.copy(), runtime.rng.normal(0.0, 0.0, size=max(runtime.config.hidden_dim, runtime.config.local_memory_dim, runtime.compiled_genome.development_dim)))
+    cell_low.receptor_profile = np.ones_like(cell.receptor_profile) * 0.2
+    altered_receptor = runtime.kernel.step(cell_low, local_fields, gradients, neighbor_summary, {})
+
+    cell_hist = cell.clone(9001, cell.pos.copy(), runtime.rng.normal(0.0, 0.0, size=max(runtime.config.hidden_dim, runtime.config.local_memory_dim, runtime.compiled_genome.development_dim)))
+    cell_hist.append_history({"task_pressure": 1.0, "damage": 0.8, "energy": 0.3, "stress": 0.7})
+    altered_history = runtime.kernel.step(cell_hist, local_fields, gradients, neighbor_summary, {})
+
+    assert not np.allclose(baseline.development_delta, altered_receptor.development_delta)
+    assert not np.allclose(baseline.development_delta, altered_history.development_delta)
+
+
+def test_organ_feedback_forms_weak_closed_loop() -> None:
+    with_feedback = OntocelliaRuntime.from_spec_files(GENOME_PATH, ENVIRONMENT_PATH, sim_config=OntocelliaConfig(seed=19, enable_organ_feedback=True))
+    without_feedback = OntocelliaRuntime.from_spec_files(GENOME_PATH, ENVIRONMENT_PATH, sim_config=OntocelliaConfig(seed=19, enable_organ_feedback=False))
+
+    with_feedback.step(14)
+    without_feedback.step(14)
+
+    assert with_feedback.metrics.history[-1]["organ_feedback"]["selection_pressure"] >= 0.0
+    assert "selection_pressure" in with_feedback.environment.fields
+    assert "selection_pressure" not in without_feedback.environment.fields
+
+
+def test_community_formation_creates_shared_organization_unit() -> None:
+    runtime = OntocelliaRuntime.from_spec_files(GENOME_PATH, ENVIRONMENT_PATH, sim_config=OntocelliaConfig(seed=21))
+    runtime.step(10)
+
+    assert runtime.communities
+    community = next(iter(runtime.communities.values()))
+    assert len(community.member_ids) >= 2
+    assert all(runtime.cells[cell_id].community_id == community.id for cell_id in community.member_ids if cell_id in runtime.cells)
+    signal = runtime.graph.summary_for(community.member_ids[0], runtime.cells, runtime.config.desired_local_density)["community_signal"]
+    assert signal > 0.0

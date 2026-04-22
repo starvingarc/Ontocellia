@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from ontocellia.architecture import OrganFeedback
 from ontocellia.config import FIELD_NAMES, OntocelliaConfig
 
 
@@ -136,6 +137,27 @@ class Microenvironment:
             self._inject_radial(field, center, radius, intensity)
         else:
             raise ValueError(f"Unsupported environment event action: {action}")
+
+    def apply_organ_feedback(self, feedback: OrganFeedback) -> None:
+        if feedback.task_pressure_bias and "task_pressure" in self.fields:
+            self.fields["task_pressure"] = np.clip(self.fields["task_pressure"] + feedback.task_pressure_bias, 0.0, 1.0)
+        if feedback.resource_pressure_bias and "nutrient" in self.fields:
+            self.fields["nutrient"] = np.clip(self.fields["nutrient"] + feedback.resource_pressure_bias, 0.0, 1.0)
+        if feedback.damage_tolerance_bias and "damage" in self.fields:
+            self.fields["damage"] = np.clip(self.fields["damage"] * (1.0 - 0.25 * feedback.damage_tolerance_bias), 0.0, 1.0)
+        if feedback.reward_field_bias:
+            if "reward_field" not in self.fields:
+                self.fields["reward_field"] = np.zeros((self.config.height, self.config.width), dtype=float)
+                self.pending_sources["reward_field"] = np.zeros_like(self.fields["reward_field"])
+                self.field_params["reward_field"] = {"diffusion": self.config.diffusion_rate, "decay": self.config.decay_rate}
+            self.fields["reward_field"] = np.clip(self.fields["reward_field"] + feedback.reward_field_bias, 0.0, 1.0)
+        if "selection_pressure" not in self.fields:
+            self.fields["selection_pressure"] = np.zeros((self.config.height, self.config.width), dtype=float)
+            self.pending_sources["selection_pressure"] = np.zeros_like(self.fields["selection_pressure"])
+            self.field_params["selection_pressure"] = {"diffusion": self.config.diffusion_rate, "decay": self.config.decay_rate}
+        for cx, cy, radius in feedback.target_regions:
+            if feedback.selection_pressure:
+                self._inject_radial("selection_pressure", (cx, cy), radius, feedback.selection_pressure)
 
     def _inject_radial(self, name: str, center: tuple[float, float], radius: float, intensity: float) -> None:
         if name not in self.fields:

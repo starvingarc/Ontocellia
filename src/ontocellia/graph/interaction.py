@@ -76,6 +76,7 @@ class InteractionGraph:
                 "relative_density_mean": 0.0,
                 "neighbor_quiescence": 0.0,
                 "contact_inhibition": 0.0,
+                "community_signal": 0.0,
             }
         template = next(iter(cells.values()))
         hidden = np.zeros_like(template.hidden_state)
@@ -88,6 +89,7 @@ class InteractionGraph:
         relative_density_mean = 0.0
         neighbor_quiescence = 0.0
         contact_inhibition = 0.0
+        community_signal = 0.0
         if self.graph.has_node(cell_id) and self.graph.degree(cell_id) > 0:
             neighbors = list(self.graph.neighbors(cell_id))
             weights = np.array([self.graph[cell_id][neighbor]["weight"] for neighbor in neighbors], dtype=float)
@@ -97,6 +99,7 @@ class InteractionGraph:
             persistences = []
             densities = []
             quiescence_values = []
+            community_values = []
             for idx, neighbor in enumerate(neighbors):
                 edge = self.graph[cell_id][neighbor]
                 hidden += cells[neighbor].hidden_state * weights[idx]
@@ -109,12 +112,18 @@ class InteractionGraph:
                 persistences.append(edge.get("persistence", 0.0))
                 densities.append(edge.get("relative_density", 0.0))
                 quiescence_values.append(getattr(cells[neighbor], "quiescence_state", 0.0))
+                same_community = (
+                    getattr(cells[cell_id], "community_id", None) is not None
+                    and getattr(cells[cell_id], "community_id", None) == getattr(cells[neighbor], "community_id", None)
+                )
+                community_values.append(1.0 if same_community else 0.0)
             graph_density = float(np.clip(len(neighbors) / max(1, self.config.max_neighbors), 0.0, 1.0))
             contact_area_mean = float(np.mean(areas))
             contact_persistence_mean = float(np.mean(persistences))
             relative_density_mean = float(np.mean(densities))
             neighbor_quiescence = float(np.mean(quiescence_values))
             contact_inhibition = float(np.clip(contact_area_mean * (1.0 - development.max()) + neighbor_quiescence * 0.4, 0.0, 1.0))
+            community_signal = float(np.mean(community_values))
         cell = cells[cell_id]
         local_neighbors = sum(
             1
@@ -134,4 +143,5 @@ class InteractionGraph:
             "relative_density_mean": relative_density_mean,
             "neighbor_quiescence": neighbor_quiescence,
             "contact_inhibition": contact_inhibition,
+            "community_signal": community_signal,
         }

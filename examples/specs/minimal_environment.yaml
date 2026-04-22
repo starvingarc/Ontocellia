@@ -2,105 +2,120 @@ metadata:
   name: minimal-open-environment
   version: "0.3.0"
   description: Environment spec with morphogens, contact context, and slow background variables.
-grid:
-  width: 32
-  height: 32
-  boundary: clamp
-  spatial_scale: 1.0
-diffusive_fields:
-  nutrient:
-    initial:
-      pattern: constant
-      value: 0.62
-    diffusion: 0.15
-    decay: 0.02
-  damage:
-    initial:
-      pattern: constant
-      value: 0.0
-    diffusion: 0.18
-    decay: 0.12
-  M1:
-    initial:
-      pattern: x_gradient
-      start: 0.75
-      end: 0.0
-    diffusion: 0.12
-    decay: 0.01
-  M2:
-    initial:
-      pattern: y_gradient
-      start: 0.0
-      end: 0.75
-    diffusion: 0.12
-    decay: 0.01
-  M3:
-    initial:
-      pattern: radial
-      center: [24, 16]
-      radius: 9
-      intensity: 0.38
-    diffusion: 0.1
-    decay: 0.02
-  task_pressure:
-    initial:
-      pattern: constant
-      value: 0.12
-    diffusion: 0.1
-    decay: 0.02
-background_context:
-  ECM:
-    initial:
-      pattern: x_gradient
-      start: 0.2
-      end: 0.7
-    diffusion: 0.05
-    decay: 0.005
-  mechanical_stress:
-    initial:
-      pattern: radial
+global_environment:
+  task_goal:
+    text: Grow a resilient tissue that maintains coverage while servicing a persistent goal zone and recovering from periodic damage.
+    objective: Maintain structure, route cells toward demand, and recover after injury.
+    success_signals: [coverage, repair_activation, worker_like]
+  resource_budget:
+    nutrient: 0.62
+    repair_capacity: 0.45
+  time_limit: 80
+  tools: [search, build, repair]
+  constraints:
+    max_damage_load: 0.45
+    min_diversity_target: 0.55
+  evaluation:
+    metrics:
+      min_coverage: 0.25
+      min_diversity: 0.55
+      max_risk_exposure: 0.45
+spatial_environment:
+  grid:
+    width: 32
+    height: 32
+    boundary: clamp
+    spatial_scale: 1.0
+  diffusive_fields:
+    nutrient:
+      initial:
+        pattern: constant
+        value: 0.62
+      diffusion: 0.15
+      decay: 0.02
+    damage:
+      initial:
+        pattern: constant
+        value: 0.0
+      diffusion: 0.18
+      decay: 0.12
+    M1:
+      initial:
+        pattern: x_gradient
+        start: 0.75
+        end: 0.0
+      diffusion: 0.12
+      decay: 0.01
+    M2:
+      initial:
+        pattern: y_gradient
+        start: 0.0
+        end: 0.75
+      diffusion: 0.12
+      decay: 0.01
+    M3:
+      initial:
+        pattern: radial
+        center: [24, 16]
+        radius: 9
+        intensity: 0.38
+      diffusion: 0.1
+      decay: 0.02
+    task_pressure:
+      initial:
+        pattern: constant
+        value: 0.12
+      diffusion: 0.1
+      decay: 0.02
+  background_context:
+    ECM:
+      initial:
+        pattern: x_gradient
+        start: 0.2
+        end: 0.7
+      diffusion: 0.05
+      decay: 0.005
+    mechanical_stress:
+      initial:
+        pattern: radial
+        center: [16, 16]
+        radius: 7
+        intensity: 0.32
+      diffusion: 0.06
+      decay: 0.01
+    crowding:
+      initial:
+        pattern: constant
+        value: 0.0
+      diffusion: 0.05
+      decay: 0.02
+  contact_context:
+    contact_radius: 5.0
+    contact_inhibition_strength: 0.42
+    default_contact_persistence: 0.6
+  sources:
+    - field: nutrient
+      center: [6, 6]
+      radius: 4
+      intensity: 0.2
+      mode: add
+  events:
+    - step: 18
+      action: damage
       center: [16, 16]
-      radius: 7
-      intensity: 0.32
-    diffusion: 0.06
-    decay: 0.01
-  crowding:
-    initial:
-      pattern: constant
-      value: 0.0
-    diffusion: 0.05
-    decay: 0.02
-contact_context:
-  contact_radius: 5.0
-  contact_inhibition_strength: 0.42
-  default_contact_persistence: 0.6
-sources:
-  - field: nutrient
-    center: [6, 6]
-    radius: 4
-    intensity: 0.2
-    mode: add
-events:
-  - step: 18
-    action: damage
-    center: [16, 16]
-    radius: 4
-    intensity: 0.8
-  - step: 32
-    action: resource
-    center: [8, 8]
-    radius: 3
-    intensity: 0.18
-  - step: 36
-    action: field
-    field: mechanical_stress
-    center: [16, 16]
-    radius: 4
-    intensity: 0.12
-global_task:
-  text: Grow a resilient tissue that maintains coverage while servicing a persistent goal zone and recovering from periodic damage.
-  objective: Maintain structure, route cells toward demand, and recover after injury.
-  success_signals: [coverage, repair_activation, worker_like]
+      radius: 4
+      intensity: 0.8
+    - step: 32
+      action: resource
+      center: [8, 8]
+      radius: 3
+      intensity: 0.18
+    - step: 36
+      action: field
+      field: mechanical_stress
+      center: [16, 16]
+      radius: 4
+      intensity: 0.12
 task_translation:
   goal_zones:
     - center: [24, 16]
@@ -129,8 +144,3 @@ task_translation:
       intensity: 0.08
   field_biases:
     task_pressure: 0.04
-evaluation:
-  metrics:
-    min_coverage: 0.25
-    min_diversity: 0.55
-    max_risk_exposure: 0.45

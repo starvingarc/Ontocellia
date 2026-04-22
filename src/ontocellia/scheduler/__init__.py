@@ -1,3 +1,3 @@
-from .runtime import OntocelliaRuntime
+from .runtime import OntocelliaRuntime, ReferenceRuntime
 
-__all__ = ["OntocelliaRuntime"]
+__all__ = ["OntocelliaRuntime", "ReferenceRuntime"]

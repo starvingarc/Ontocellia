@@ -585,15 +585,15 @@ class EventSpec:
 
 
 @dataclass(slots=True)
-class GlobalTaskSpec:
+class TaskGoalSpec:
     text: str
     objective: str = ""
     success_signals: list[str] = field(default_factory=list)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "GlobalTaskSpec":
+    def from_dict(cls, data: dict[str, Any]) -> "TaskGoalSpec":
         if "text" not in data:
-            raise ValueError("global_task.text is required")
+            raise ValueError("task_goal.text is required")
         return cls(
             text=str(data["text"]),
             objective=str(data.get("objective", "")),
@@ -630,22 +630,38 @@ class EvaluationSpec:
 
 
 @dataclass(slots=True)
-class EnvironmentSpec:
-    metadata: MetadataSpec
+class GlobalEnvironmentSpec:
+    task_goal: TaskGoalSpec
+    resource_budget: dict[str, float] = field(default_factory=dict)
+    time_limit: int | None = None
+    tools: list[str] = field(default_factory=list)
+    evaluation: EvaluationSpec = field(default_factory=EvaluationSpec)
+    constraints: dict[str, float] = field(default_factory=dict)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "GlobalEnvironmentSpec":
+        task_data = data.get("task_goal", data.get("global_task", {}))
+        return cls(
+            task_goal=TaskGoalSpec.from_dict(task_data),
+            resource_budget={str(name): float(value) for name, value in data.get("resource_budget", {}).items()},
+            time_limit=int(data["time_limit"]) if data.get("time_limit") is not None else None,
+            tools=[str(item) for item in data.get("tools", [])],
+            evaluation=EvaluationSpec.from_dict(_required_mapping(data, "evaluation")),
+            constraints={str(name): float(value) for name, value in data.get("constraints", {}).items()},
+        )
+
+
+@dataclass(slots=True)
+class SpatialEnvironmentSpec:
     grid: GridSpec
     diffusive_fields: dict[str, FieldSpec]
     background_context: dict[str, FieldSpec]
     contact_context: dict[str, float]
     sources: list[ZoneSpec]
     events: list[EventSpec]
-    global_task: GlobalTaskSpec
-    task_translation: TaskTranslationSpec
-    evaluation: EvaluationSpec
-    source_path: Path | None = None
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any], *, source_path: Path | None = None) -> "EnvironmentSpec":
-        metadata = MetadataSpec.from_dict(_required_mapping(data, "metadata"))
+    def from_dict(cls, data: dict[str, Any]) -> "SpatialEnvironmentSpec":
         grid = GridSpec.from_dict(_required_mapping(data, "grid"))
 
         if "diffusive_fields" in data or "background_context" in data:
@@ -674,15 +690,79 @@ class EnvironmentSpec:
             "default_contact_persistence": float(data.get("contact_context", {}).get("default_contact_persistence", 0.6)),
         }
         return cls(
-            metadata=metadata,
             grid=grid,
             diffusive_fields=diffusive_fields,
             background_context=background_context,
             contact_context=contact_context,
             sources=[ZoneSpec.from_dict(item) for item in data.get("sources", [])],
             events=[EventSpec.from_dict(item) for item in data.get("events", [])],
-            global_task=GlobalTaskSpec.from_dict(_required_mapping(data, "global_task")),
-            task_translation=TaskTranslationSpec.from_dict(_required_mapping(data, "task_translation")),
-            evaluation=EvaluationSpec.from_dict(_required_mapping(data, "evaluation")),
+        )
+
+
+@dataclass(slots=True)
+class EnvironmentSpec:
+    metadata: MetadataSpec
+    global_environment: GlobalEnvironmentSpec
+    spatial_environment: SpatialEnvironmentSpec
+    task_translation: TaskTranslationSpec
+    source_path: Path | None = None
+
+    @property
+    def grid(self) -> GridSpec:
+        return self.spatial_environment.grid
+
+    @property
+    def diffusive_fields(self) -> dict[str, FieldSpec]:
+        return self.spatial_environment.diffusive_fields
+
+    @property
+    def background_context(self) -> dict[str, FieldSpec]:
+        return self.spatial_environment.background_context
+
+    @property
+    def contact_context(self) -> dict[str, float]:
+        return self.spatial_environment.contact_context
+
+    @property
+    def sources(self) -> list[ZoneSpec]:
+        return self.spatial_environment.sources
+
+    @property
+    def events(self) -> list[EventSpec]:
+        return self.spatial_environment.events
+
+    @property
+    def global_task(self) -> TaskGoalSpec:
+        return self.global_environment.task_goal
+
+    @property
+    def evaluation(self) -> EvaluationSpec:
+        return self.global_environment.evaluation
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any], *, source_path: Path | None = None) -> "EnvironmentSpec":
+        metadata = MetadataSpec.from_dict(_required_mapping(data, "metadata"))
+        if "global_environment" in data or "spatial_environment" in data:
+            global_environment = GlobalEnvironmentSpec.from_dict(_required_mapping(data, "global_environment"))
+            spatial_environment = SpatialEnvironmentSpec.from_dict(_required_mapping(data, "spatial_environment"))
+            task_translation = TaskTranslationSpec.from_dict(_required_mapping(data, "task_translation"))
+        else:
+            global_environment = GlobalEnvironmentSpec.from_dict(
+                {
+                    "global_task": _required_mapping(data, "global_task"),
+                    "evaluation": _required_mapping(data, "evaluation"),
+                    "resource_budget": data.get("resource_budget", {}),
+                    "time_limit": data.get("time_limit"),
+                    "tools": data.get("tools", []),
+                    "constraints": data.get("constraints", {}),
+                }
+            )
+            spatial_environment = SpatialEnvironmentSpec.from_dict(data)
+            task_translation = TaskTranslationSpec.from_dict(_required_mapping(data, "task_translation"))
+        return cls(
+            metadata=metadata,
+            global_environment=global_environment,
+            spatial_environment=spatial_environment,
+            task_translation=task_translation,
             source_path=source_path,
         )

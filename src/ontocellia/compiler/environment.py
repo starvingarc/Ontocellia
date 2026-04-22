@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from ontocellia.architecture import EnvironmentModel
 from ontocellia.specs.schema import EnvironmentSpec, EventSpec, ZoneSpec
 
 
@@ -19,6 +20,7 @@ class BuiltEnvironment:
     events: list[EventSpec]
     global_task: dict[str, object]
     evaluation: dict[str, float]
+    environment_model: EnvironmentModel | None = None
 
 
 class TaskCompiler:
@@ -76,11 +78,11 @@ class EnvironmentBuilder:
             self.task_compiler._apply_zone(initial_fields, source.field or "task_pressure", source)
         initial_fields, events = self.task_compiler.apply(spec, initial_fields)
         global_task = {
-            "text": spec.global_task.text,
-            "objective": spec.global_task.objective,
-            "success_signals": spec.global_task.success_signals,
+            "text": spec.global_environment.task_goal.text,
+            "objective": spec.global_environment.task_goal.objective,
+            "success_signals": spec.global_environment.task_goal.success_signals,
         }
-        return BuiltEnvironment(
+        built = BuiltEnvironment(
             field_names=list(initial_fields),
             diffusive_field_names=list(spec.diffusive_fields),
             background_field_names=list(spec.background_context),
@@ -90,8 +92,10 @@ class EnvironmentBuilder:
             sources=spec.sources,
             events=events,
             global_task=global_task,
-            evaluation=dict(spec.evaluation.metrics),
+            evaluation=dict(spec.global_environment.evaluation.metrics),
         )
+        built.environment_model = EnvironmentModel.from_built_environment(spec, built)
+        return built
 
     def _build_initial(self, shape: tuple[int, int], initial: float | dict[str, object]) -> np.ndarray:
         if isinstance(initial, (int, float)):

@@ -5,7 +5,7 @@ from pathlib import Path
 
 from ontocellia.config import GeneAsset, GeneKind, OntocelliaConfig
 from ontocellia.observation import export_summary, plot_fate_timeline, plot_fields, plot_interaction_graph, plot_lineage
-from ontocellia.scheduler.runtime import OntocelliaRuntime
+from ontocellia.scheduler.runtime import ReferenceRuntime
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -28,9 +28,9 @@ def main() -> None:
     if args.genome_spec or args.environment_spec:
         if not args.genome_spec or not args.environment_spec:
             raise SystemExit("--genome-spec and --environment-spec must be provided together")
-        runtime = OntocelliaRuntime.from_spec_files(args.genome_spec, args.environment_spec, sim_config=config)
+        runtime = ReferenceRuntime.from_spec_files(args.genome_spec, args.environment_spec, sim_config=config)
     else:
-        runtime = OntocelliaRuntime(config)
+        runtime = ReferenceRuntime(config)
         runtime.inject_goal((config.width * 0.72, config.height * 0.48), radius=4.0, intensity=0.18)
 
     if args.with_warning_gene:
@@ -64,6 +64,7 @@ def main() -> None:
     plot_fate_timeline(runtime, output_dir)
     plot_lineage(runtime, output_dir)
     print(f"Summary written to {summary_path}")
+    print("Framework: Ontocellia developmental agent architecture")
     print(f"Mode: {runtime.mode}")
     print(f"Final population: {len(runtime.cells)}")
     print(f"Phenotypes: {runtime.phenotype_counts()}")

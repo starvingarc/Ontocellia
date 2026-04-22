@@ -73,8 +73,11 @@ class OntocelliaConfig:
     enable_competence: bool = True
     enable_epigenetic_lock: bool = True
     resource_driven_division: bool = True
+    enable_organ_feedback: bool = True
     mutation_noise: float = 0.03
     lineage_cooldown_steps: int = 5
+    community_min_size: int = 2
+    community_edge_threshold: float = 0.55
     gene_evolution_period: int | None = None
     default_genes: list[GeneAsset] = field(default_factory=list)
 
@@ -91,5 +94,6 @@ class OntocelliaConfig:
             "enable_graph": self.enable_graph,
             "enable_competence": self.enable_competence,
             "enable_epigenetic_lock": self.enable_epigenetic_lock,
+            "enable_organ_feedback": self.enable_organ_feedback,
             "resource_driven_division": self.resource_driven_division,
         }

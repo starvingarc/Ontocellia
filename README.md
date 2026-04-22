@@ -1,27 +1,20 @@
 # Ontocellia
 
-Ontocellia is a biologically grounded Python runtime for decentralized developmental agents.
-Cells share one genome-like rule set and specialize through morphogen gradients,
-contact inhibition, competence windows, microenvironmental context, and epigenetic locking.
+Ontocellia is a developmental agent framework for building decentralized, cell-like multi-agent systems.
 
-The core abstraction is:
+Agents share one genome-like program, but diverge through local state, microenvironment, contact signals, and weak system-level selection pressure. The bundled runtime is a reference implementation of that architecture.
 
-- `Genome layer`: shared developmental rule set
-- `Cell state layer`: per-cell internal state and attractor dynamics
-- `Microenvironment layer`: long-range morphogens, short-range contact signals, slow background context
-- `Fate engine layer`: continuous landscape with multi-step commitment
-- `Communication layer`: diffusive secretion, neighbor-only contact signals, and behavior actions
+## Features
 
-## What v1 demonstrates
+- Shared `GenomeProgram` with per-agent state divergence
+- Continuous developmental dynamics with attractor commitment
+- Global environment + local microenvironment separation
+- Long-range fields, short-range contact signaling, and background context
+- Life processes: divide, differentiate, migrate, apoptose, dedifferentiate, quiesce
+- Lightweight community formation for higher-order organization
+- Reference runtime, specs, plots, and tests included
 
-- Self-organization from initially homogeneous cells
-- Resource-driven division and bounded growth
-- Differentiation through commitment dynamics
-- Self-repair after local damage
-- Hybrid substrate behavior through 2D fields plus a dynamic interaction graph
-- Strategy and warning genes as structured control objects
-
-## Quick start
+## Quick Start
 
 ```bash
 python -m pip install -e .
@@ -30,18 +23,19 @@ python -m ontocellia --genome-spec examples/specs/minimal_genome.yaml --environm
 pytest
 ```
 
-The demo writes a JSON summary and several plots into the chosen output folder.
+## Core Model
 
-## Biologically grounded spec mode
+- `Genome`: shared developmental rule set
+- `Cell State`: internal state, fate state, energy, age, competence, history, receptor profile
+- `Microenvironment`: diffusive fields, contact context, mechanical/resource context
+- `Fate Landscape`: attractors, competence windows, hysteresis, reprogramming cost
+- `Life Processes`: division, differentiation, migration, apoptosis, community formation
+- `Organ Selection`: weak global feedback through environment pressure, not central control
 
-- `GenomeSpec` defines the shared developmental rule set
-- `EnvironmentSpec` defines diffusive fields, contact context, background context, sources, events, and task translation
-- `GeneAsset` remains a runtime strategy/warning modulation layer and is not the same thing as the genome
+## Specs
 
-The default v3 examples include:
+- `GenomeSpec` defines the shared developmental program
+- `EnvironmentSpec` defines global environment, spatial environment, and task translation
+- `GeneAsset` is an optional runtime modulation layer, not the genome itself
 
-- long-range morphogens `M1`, `M2`, `M3`
-- `NotchLike` short-range contact inhibition
-- slow background context via `ECM`, `mechanical_stress`, `nutrient`, and `damage`
-- competence windows and hysteresis / epigenetic lock
-- attractor-based fate landscape with multi-step commitment
+See [examples/specs/minimal_genome.yaml](examples/specs/minimal_genome.yaml) and [examples/specs/minimal_environment.yaml](examples/specs/minimal_environment.yaml) for a minimal setup.

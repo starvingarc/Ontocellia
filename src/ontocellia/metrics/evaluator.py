@@ -43,6 +43,10 @@ class MetricsRecorder:
                 "risk_exposure": 0.0,
                 "contact_inhibition": 0.0,
                 "attractor_occupancy": {},
+                "organ_metrics": {},
+                "organ_feedback": {},
+                "communities": 0,
+                "community_cells": 0,
             }
             self.history.append(snapshot)
             return snapshot
@@ -102,6 +106,8 @@ class MetricsRecorder:
             name: float(np.mean([cell.attractor_potentials.get(name, 0.0) for cell in runtime.cells.values()]))
             for name in attractor_names
         }
+        organ_metrics = runtime.organ_selection_field.evaluate(runtime) if getattr(runtime, "organ_selection_field", None) is not None else {}
+        organ_feedback = runtime.organ_selection_field.feedback(runtime) if getattr(runtime, "organ_selection_field", None) is not None else None
         positive_mean = np.maximum(development, 0.0).mean(axis=0) + 1e-6
         snapshot = {
             "tick": runtime.tick_count,
@@ -125,6 +131,20 @@ class MetricsRecorder:
             "fate_counts": {},
             "probe_counts": probe_counts,
             "attractor_occupancy": attractor_occupancy,
+            "organ_metrics": organ_metrics,
+            "organ_feedback": (
+                {
+                    "task_pressure_bias": organ_feedback.task_pressure_bias,
+                    "resource_pressure_bias": organ_feedback.resource_pressure_bias,
+                    "damage_tolerance_bias": organ_feedback.damage_tolerance_bias,
+                    "reward_field_bias": organ_feedback.reward_field_bias,
+                    "selection_pressure": organ_feedback.selection_pressure,
+                }
+                if organ_feedback is not None
+                else {}
+            ),
+            "communities": len(getattr(runtime, "communities", {})),
+            "community_cells": int(sum(1 for cell in runtime.cells.values() if getattr(cell, "community_id", None) is not None)),
         }
         self.history.append(snapshot)
         return snapshot

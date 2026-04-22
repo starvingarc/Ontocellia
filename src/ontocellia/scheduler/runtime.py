@@ -3,8 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import networkx as nx
 import numpy as np
 
+from ontocellia.architecture import CommunityState, FateLandscape, LifeProcessModel, LocalContext, NeighborhoodState, OrganSelectionField
 from ontocellia.cells import CellState, GenomeKernel
 from ontocellia.compiler import BuiltEnvironment, CompiledGenome, EnvironmentBuilder, GenomeSpecCompiler
 from ontocellia.config import FATE_NAMES, GeneAsset, LEGACY_MODE, OntocelliaConfig, SPEC_MODE
@@ -28,9 +30,14 @@ class OntocelliaRuntime:
     graph: InteractionGraph = field(init=False)
     kernel: GenomeKernel = field(init=False)
     fate_engine: FateEngine | None = field(init=False, default=None)
+    fate_landscape: FateLandscape | None = field(init=False, default=None)
+    life_process_model: LifeProcessModel | None = field(init=False, default=None)
+    organ_selection_field: OrganSelectionField | None = field(init=False, default=None)
     gene_registry: GeneRegistry = field(init=False)
     metrics: MetricsRecorder = field(init=False)
+    environment_model: object | None = field(init=False, default=None)
     cells: dict[int, CellState] = field(default_factory=dict, init=False)
+    communities: dict[int, CommunityState] = field(default_factory=dict, init=False)
     tick_count: int = 0
     next_cell_id: int = 0
     total_deaths: int = 0
@@ -86,6 +93,8 @@ class OntocelliaRuntime:
         self.environment = Microenvironment(self.config)
         self.kernel = GenomeKernel(self.config)
         self.fate_engine = FateEngine(self.config)
+        self.life_process_model = LifeProcessModel(self.config)
+        self.organ_selection_field = OrganSelectionField()
         self.seed_cells(self.config.initial_cells)
 
     def _initialize_spec_mode(self) -> None:
@@ -100,10 +109,16 @@ class OntocelliaRuntime:
             initial_fields=self.built_environment.initial_fields,
             field_params=self.built_environment.field_params,
         )
+        self.environment_model = self.built_environment.environment_model
         self.kernel = GenomeKernel(self.config, compiled_genome=self.compiled_genome)
         self.fate_engine = None
+        self.fate_landscape = FateLandscape(self.config, self.compiled_genome)
+        self.life_process_model = LifeProcessModel(self.config, self.compiled_genome)
+        self.organ_selection_field = OrganSelectionField()
         self.seed_spec_cells(self.config.initial_cells)
         self.goals.append({"task": self.built_environment.global_task["text"], "objective": self.built_environment.global_task["objective"]})
+        for zone in self.environment_spec.task_translation.goal_zones:
+            self.goals.append({"center": zone.center, "radius": zone.radius, "intensity": zone.intensity})
 
     def seed_cells(self, count: int) -> None:
         center = np.array([self.config.width / 2, self.config.height / 2], dtype=float)
@@ -124,6 +139,8 @@ class OntocelliaRuntime:
                 epigenetic_lock=float(self.rng.uniform(0.1, 0.2)),
                 lineage_parent=None,
                 local_memory=self.rng.normal(0.0, 0.05, size=self.config.local_memory_dim),
+                history=[],
+                receptor_profile=np.ones(len(self.environment.fields), dtype=float),
             )
             self.cells[cell.id] = cell
             self.next_cell_id += 1
@@ -132,6 +149,7 @@ class OntocelliaRuntime:
         assert self.compiled_genome is not None
         center = np.array([self.config.width / 2, self.config.height / 2], dtype=float)
         development_dim = self.compiled_genome.development_dim
+        receptor_profile = np.clip(np.linalg.norm(self.compiled_genome.field_matrix, axis=0) + 0.5, 0.2, 1.6)
         for _ in range(count):
             pos = self.substrate.nearby_position(self.rng, center, scale=3.2)
             hidden = self.rng.normal(0.0, 0.12, size=self.config.hidden_dim)
@@ -159,6 +177,8 @@ class OntocelliaRuntime:
                 contact_state=np.zeros(development_dim, dtype=float),
                 commitment_timer={attractor.name: 0 for attractor in self.compiled_genome.attractors},
                 attractor_potentials={attractor.name: 0.0 for attractor in self.compiled_genome.attractors},
+                history=[],
+                receptor_profile=receptor_profile.copy(),
             )
             self.cells[cell.id] = cell
             self.next_cell_id += 1
@@ -256,23 +276,46 @@ class OntocelliaRuntime:
     def _step_once_spec(self) -> None:
         self.tick_count += 1
         self._dispatch_spec_events()
+        if self.config.enable_organ_feedback and self.organ_selection_field is not None and self.metrics.history:
+            self.environment.apply_organ_feedback(self.organ_selection_field.feedback(self))
         crowding = self.substrate.crowding_map(self.cells)
         self.environment.set_crowding(crowding)
         self.environment.diffuse()
         self.graph.rebuild(self.cells)
+        self._update_communities()
 
         actions: dict[int, dict[str, object]] = {}
         for cell_id, cell in list(self.cells.items()):
             local_fields = self.environment.sample(cell.pos)
             gradients = self.environment.gradients(cell.pos)
             neighbor_summary = self.graph.summary_for(cell_id, self.cells, self.config.desired_local_density)
+            neighborhood_state = NeighborhoodState.from_summary(neighbor_summary)
+            local_context = LocalContext(
+                diffusive_fields=dict(local_fields),
+                gradient_fields={name: gradients.get(name, np.zeros(2, dtype=float)) for name in gradients},
+                neighbor_messages={
+                    "contact_inhibition": neighborhood_state.contact_inhibition,
+                    "neighbor_quiescence": neighborhood_state.neighbor_quiescence,
+                    "community_signal": neighborhood_state.community_signal,
+                },
+                mechanical_resource_context={
+                    key: float(local_fields.get(key, 0.0))
+                    for key in ("ECM", "mechanical_stress", "crowding", "nutrient")
+                    if key in local_fields
+                },
+                local_risk=float(local_fields.get("damage", 0.0) + local_fields.get("crowding", 0.0) * 0.5),
+                global_signals={"selection_pressure": float(self.environment.fields.get("selection_pressure", np.zeros((1, 1)))[0, 0]) if "selection_pressure" in self.environment.fields else 0.0},
+            )
             gene_state = self.gene_registry.evaluate(local_fields)
             cell.active_genes = list(gene_state["active_names"])
             kernel_output = self.kernel.step(cell, local_fields, gradients, neighbor_summary, gene_state)
+            assert self.life_process_model is not None
+            life_decision = self.life_process_model.resolve(cell, kernel_output, local_context, neighborhood_state)
             actions[cell_id] = {
                 "fields": local_fields,
                 "kernel": kernel_output,
                 "neighbor_summary": neighbor_summary,
+                "life_decision": life_decision,
             }
 
         deaths: list[tuple[float, float]] = []
@@ -292,12 +335,17 @@ class OntocelliaRuntime:
             cell.stress = float(np.clip(cell.stress + output.stress_delta, 0.0, 1.2))
             cell.trust = float(np.clip(0.88 * cell.trust + 0.12 * output.edge_intent, 0.0, 1.0))
             cell.repair_signal = float(np.clip(0.65 * cell.repair_signal + 0.35 * output.repair_score, 0.0, 1.0))
-            cell.competence_state = self._update_competence_spec(cell, fields)
+            assert self.fate_landscape is not None
+            cell.competence_state = self.fate_landscape.update_competence(cell, fields)
             if output.neighbor_signal is not None:
                 cell.contact_state = output.neighbor_signal
             cell.quiescence_state = float(np.clip(0.7 * cell.quiescence_state + 0.3 * output.quiescence_drive, 0.0, 1.0))
-            self._update_development_state(cell, output.development_delta if output.development_delta is not None else np.zeros_like(cell.development_state))
-            self._update_attractor_commitment(cell, output.attractor_potentials or {})
+            self.fate_landscape.apply_development_transition(cell, output.development_delta if output.development_delta is not None else np.zeros_like(cell.development_state))
+            life_decision = record["life_decision"]
+            if life_decision.should_dedifferentiate:
+                cell.development_state = np.tanh(cell.development_state * 0.85)
+                cell.epigenetic_lock = float(np.clip(cell.epigenetic_lock * 0.94, 0.05, 1.0))
+            self.fate_landscape.update_commitment(cell, output.attractor_potentials or {})
             self._update_probe_labels(cell, output.probe_scores or {})
 
             if self.config.enable_spatial:
@@ -306,7 +354,7 @@ class OntocelliaRuntime:
             self.environment.emit(cell.pos, output.signal_emission)
 
             local_demand = float(record["neighbor_summary"]["local_demand"])
-            if self._should_divide_spec(cell, output.division_score, fields, local_demand):
+            if life_decision.should_divide:
                 self.division_events += 1
                 if fields.get("damage", 0.0) > 0.12 or fields.get("crowding", 0.0) > 0.35:
                     self.risky_divisions += 1
@@ -322,7 +370,9 @@ class OntocelliaRuntime:
                 cell.energy = max(0.08, cell.energy * parent_share)
                 cell.lineage_cooldown = self.compiled_genome.spec.lineage_rules.cooldown_steps
 
-            if self._should_die_spec(cell, output.death_score, fields):
+            self._record_cell_history(cell, fields, life_decision.action_scores)
+
+            if life_decision.should_die:
                 deaths.append(tuple(cell.pos.tolist()))
                 self.total_deaths += 1
                 del self.cells[cell_id]
@@ -332,6 +382,7 @@ class OntocelliaRuntime:
             self.cells[child.id] = child
 
         self.graph.rebuild(self.cells)
+        self._update_communities()
         self._repair_response_spec(deaths)
         self.metrics.record(self)
 
@@ -341,6 +392,59 @@ class OntocelliaRuntime:
         for event in self.built_environment.events:
             if self.tick_count == event.step or (event.repeat_every and self.tick_count >= event.step and (self.tick_count - event.step) % event.repeat_every == 0):
                 self.environment.apply_event(event.action, event.center, event.radius, event.intensity, field=event.field)
+
+    def _update_communities(self) -> None:
+        self.communities = {}
+        for cell in self.cells.values():
+            cell.community_id = None
+        if not self.config.enable_graph or self.graph.graph.number_of_nodes() == 0:
+            return
+        candidate = self.graph.graph.edge_subgraph(
+            [
+                (left, right)
+                for left, right, data in self.graph.graph.edges(data=True)
+                if float(data.get("weight", 0.0)) >= self.config.community_edge_threshold
+            ]
+        ).copy()
+        community_id = 0
+        for members in nx.connected_components(candidate):
+            if len(members) < self.config.community_min_size:
+                continue
+            member_ids = sorted(members)
+            member_cells = [self.cells[cell_id] for cell_id in member_ids if cell_id in self.cells]
+            if not member_cells:
+                continue
+            centroid = np.mean([cell.pos for cell in member_cells], axis=0)
+            shared_development = np.mean([cell.fate_state for cell in member_cells], axis=0)
+            signal_pool = float(np.mean([cell.repair_signal for cell in member_cells]))
+            subgraph = self.graph.graph.subgraph(member_ids)
+            cohesion = float(np.mean([data.get("weight", 0.0) for _, _, data in subgraph.edges(data=True)]) if subgraph.number_of_edges() else 0.0)
+            self.communities[community_id] = CommunityState(
+                id=community_id,
+                member_ids=member_ids,
+                centroid=np.asarray(centroid, dtype=float),
+                shared_development=np.asarray(shared_development, dtype=float),
+                signal_pool=signal_pool,
+                cohesion=cohesion,
+            )
+            for cell in member_cells:
+                cell.community_id = community_id
+                if cell.development_state is not None:
+                    cell.development_state = np.tanh(0.92 * cell.development_state + 0.08 * shared_development[: cell.development_state.size])
+            community_id += 1
+
+    def _record_cell_history(self, cell: CellState, fields: dict[str, float], action_scores: dict[str, float]) -> None:
+        top_action = max(action_scores.items(), key=lambda item: item[1])[0] if action_scores else "idle"
+        cell.append_history(
+            {
+                "tick": float(self.tick_count),
+                "task_pressure": float(fields.get("task_pressure", 0.0)),
+                "damage": float(fields.get("damage", 0.0)),
+                "energy": float(cell.energy),
+                "stress": float(cell.stress),
+                "action": top_action,
+            }
+        )
 
     def _update_competence_legacy(self, cell: CellState, fields: dict[str, float]) -> np.ndarray:
         age_factor = np.clip(1.0 - cell.age / 55, 0.05, 1.0)
@@ -529,3 +633,6 @@ class OntocelliaRuntime:
         for cell in self.cells.values():
             counts[cell.current_fate] += 1
         return counts
+
+
+ReferenceRuntime = OntocelliaRuntime
