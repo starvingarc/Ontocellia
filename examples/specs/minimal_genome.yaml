@@ -1,0 +1,200 @@
+metadata:
+  name: minimal-developmental-genome
+  version: "0.3.0"
+  description: Shared genome spec for biologically aligned developmental agents.
+state_dims:
+  hidden_dim: 8
+  memory_dim: 4
+  development_dim: 4
+  development_names: [maintenance, exploratory, productive, repair]
+sensing:
+  field_weights:
+    nutrient: [0.35, 0.05, 0.12, -0.08]
+    damage: [-0.25, 0.05, -0.18, 0.72]
+    task_pressure: [0.0, 0.38, 0.32, 0.18]
+    M1: [0.55, 0.15, 0.02, -0.04]
+    M2: [0.02, 0.12, 0.55, 0.08]
+    M3: [0.05, 0.3, 0.25, 0.18]
+    ECM: [0.22, -0.05, 0.18, 0.12]
+    mechanical_stress: [-0.18, 0.04, -0.1, 0.24]
+    crowding: [-0.2, -0.1, -0.12, -0.22]
+  gradient_weights:
+    nutrient: [0.08, 0.0, 0.12, -0.04]
+    damage: [-0.04, 0.04, -0.04, 0.18]
+    task_pressure: [0.0, 0.15, 0.12, 0.08]
+    M1: [0.12, 0.02, 0.0, 0.0]
+    M2: [0.0, 0.04, 0.15, 0.02]
+    M3: [0.0, 0.08, 0.08, 0.1]
+  hidden_feedback_weight: 0.12
+  memory_feedback_weight: 0.14
+  neighbor_development_weight: 0.32
+  neighbor_hidden_weight: 0.08
+  graph_weight: 0.16
+  local_demand_weight: 0.24
+behavior_biases:
+  move: [0.18, 0.52, 0.34, 0.22]
+  divide: [0.62, 0.42, 0.18, 0.22]
+  die: [-0.12, 0.0, 0.12, 0.25]
+  secrete: [0.12, 0.2, 0.42, 0.24]
+  rewire: [0.18, 0.32, 0.36, 0.16]
+  repair: [0.02, 0.08, 0.18, 0.9]
+  quiesce: [0.26, 0.1, 0.08, 0.15]
+  differentiate: [0.1, 0.15, 0.32, 0.22]
+  silence: [0.08, 0.0, 0.0, 0.14]
+morphogens:
+  - name: M1
+    diffusion: 0.12
+    decay: 0.01
+    interpreter_weights: [0.55, 0.15, 0.02, -0.04]
+  - name: M2
+    diffusion: 0.12
+    decay: 0.01
+    interpreter_weights: [0.02, 0.12, 0.55, 0.08]
+  - name: M3
+    diffusion: 0.1
+    decay: 0.02
+    interpreter_weights: [0.05, 0.3, 0.25, 0.18]
+contact_programs:
+  - name: NotchLike
+    sender_weights: [0.0, 0.12, 0.55, 0.1]
+    receiver_weights: [0.12, 0.4, -0.28, 0.18]
+    inhibition_strength: 0.35
+    activation_strength: 0.1
+    contact_area_weight: 0.3
+    crowding_weight: 0.2
+    persistence_weight: 0.25
+    quiescence_threshold: 0.6
+background_context:
+  weights:
+    ECM: [0.22, -0.05, 0.18, 0.12]
+    mechanical_stress: [-0.18, 0.04, -0.1, 0.24]
+    nutrient: [0.1, 0.0, 0.08, -0.05]
+    damage: [-0.1, 0.02, -0.08, 0.22]
+secretion_programs:
+  - field: M1
+    development_weights: [0.55, 0.12, 0.04, 0.0]
+    field_weights:
+      nutrient: 0.08
+    memory_weights: [0.0, 0.0, 0.0, 0.0]
+  - field: M2
+    development_weights: [0.0, 0.12, 0.65, 0.08]
+    field_weights:
+      task_pressure: 0.12
+    memory_weights: [0.0, 0.08, 0.0, 0.0]
+  - field: M3
+    development_weights: [0.0, 0.2, 0.22, 0.18]
+    field_weights:
+      task_pressure: 0.16
+      damage: 0.08
+    memory_weights: [0.04, 0.08, 0.0, 0.0]
+  - field: task_pressure
+    development_weights: [0.0, 0.16, 0.28, 0.32]
+    field_weights:
+      damage: 0.18
+    memory_weights: [0.08, 0.08, 0.0, 0.0]
+competence_windows:
+  - dimension: maintenance
+    promoters:
+      M1: 0.22
+      nutrient: 0.15
+    inhibitors:
+      damage: 0.25
+    age_weight: 0.28
+    energy_weight: 0.18
+    stress_weight: 0.08
+    ecm_weight: 0.12
+  - dimension: exploratory
+    promoters:
+      M3: 0.18
+      task_pressure: 0.35
+    inhibitors:
+      crowding: 0.15
+    age_weight: 0.08
+    energy_weight: 0.18
+    stress_weight: 0.08
+    mechanical_weight: 0.08
+  - dimension: productive
+    promoters:
+      M2: 0.35
+      nutrient: 0.18
+    inhibitors:
+      damage: 0.2
+    age_weight: 0.15
+    energy_weight: 0.22
+    stress_weight: 0.08
+    ecm_weight: 0.1
+  - dimension: repair
+    promoters:
+      damage: 0.65
+      task_pressure: 0.18
+      mechanical_stress: 0.12
+    inhibitors:
+      nutrient: 0.08
+    age_weight: 0.0
+    energy_weight: 0.08
+    stress_weight: 0.12
+epigenetic_lock:
+  strength: 0.24
+  decay: 0.82
+  revert_cost: 0.18
+  commitment_half_life: 4.0
+  reprogramming_penalty: 0.25
+lineage_rules:
+  cooldown_steps: 5
+  parent_energy_share: 0.58
+  child_energy_share: 0.42
+  noise_scale: 0.03
+  division_energy_threshold: 0.52
+task_coupling:
+  field_biases:
+    task_pressure: 0.1
+  development_biases: [0.0, 0.22, 0.28, 0.2]
+  goal_zone_bias: 0.22
+fate_landscape:
+  global_commitment_threshold: 0.58
+  attractors:
+    - name: maintenance
+      center: [1.0, 0.0, 0.0, 0.0]
+      basin_sharpness: 4.0
+      commitment_threshold: 0.56
+      stability_horizon: 4
+    - name: exploratory
+      center: [0.0, 1.0, 0.0, 0.0]
+      basin_sharpness: 4.3
+      commitment_threshold: 0.58
+      stability_horizon: 4
+    - name: productive
+      center: [0.0, 0.0, 1.0, 0.0]
+      basin_sharpness: 4.5
+      commitment_threshold: 0.6
+      stability_horizon: 5
+    - name: repair
+      center: [0.0, 0.0, 0.0, 1.0]
+      basin_sharpness: 4.8
+      commitment_threshold: 0.62
+      stability_horizon: 3
+reporting_probes:
+  - name: stabilizer_like
+    development_weights: [0.8, 0.1, 0.0, -0.1]
+    field_weights:
+      M1: 0.22
+      ECM: 0.12
+    energy_weight: 0.1
+    stress_weight: 0.05
+    threshold: 0.52
+  - name: worker_like
+    development_weights: [0.0, 0.2, 0.8, 0.0]
+    field_weights:
+      task_pressure: 0.18
+      M2: 0.18
+    energy_weight: 0.05
+    stress_weight: 0.05
+    threshold: 0.55
+  - name: repair_like
+    development_weights: [0.0, 0.0, 0.1, 0.9]
+    field_weights:
+      damage: 0.35
+      mechanical_stress: 0.12
+    energy_weight: 0.0
+    stress_weight: 0.1
+    threshold: 0.5

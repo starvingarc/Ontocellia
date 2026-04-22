@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ontocellia"
+version = "0.1.0"
+description = "A decentralized developmental agent runtime with self-organization and self-repair."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "matplotlib>=3.10",
+  "networkx>=3.5",
+  "numpy>=2.3",
+  "PyYAML>=6.0",
+]
+
+[project.scripts]
+ontocellia-demo = "ontocellia.__main__:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
