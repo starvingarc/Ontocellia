@@ -239,6 +239,21 @@ It contains:
 
 The implementation is framework-first. The direct API and YAML specs define an agent tissue; the older simulation and experiment runtime can be used as a reference substrate for dynamics, metrics, and ablation studies.
 
+### Phase 2 Cell Layer Implementation
+
+The Cell Layer now uses graph topology as the primary position model. A cell position is a `CellPosition` with `node_id`, `region`, `neighbors`, and a three-dimensional `embedding`. The graph node carries the semantic tissue location, such as a repair niche, review boundary, repository subsystem, document section, or resource niche. The three-dimensional embedding is used for visualization and fallback distance estimation.
+
+The framework cell object now carries:
+
+- stage state: stem, progenitor, transit-amplifying, or differentiated
+- lineage record: parent, root, generation, and local events
+- receptor profile: signal sensitivities and accepted extracellular interfaces
+- adhesion profile: compatible fates and local cohesion strength
+- competence profile: fate scores and plasticity
+- epigenetic marks and local history
+
+`AgentCell` can now construct a genome `ExpressionContext`, spawn lineage children, commit to a fate, record local events, and gate extracellular interface usage through receptor compatibility. `TissueRuntime` uses these methods for differentiation, division, regeneration, reprogramming, and action emission.
+
 ## 6. Genes as the Lowest-Level Unit
 
 Ontocellia should treat genes as the lowest-level endogenous units of the system.

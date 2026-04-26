@@ -5,6 +5,7 @@ from typing import Any
 
 import yaml
 
+from ontocellia.framework.cell import CellPosition
 from ontocellia.framework.core import ExtracellularInterface, MorphogenField, Niche, TaskMicroenvironment
 from ontocellia.framework.genome import AgentGenome, EpigeneticMarks, Gene, RegulatoryElement
 
@@ -67,10 +68,8 @@ def _strip_type(data: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
-def _position(value: Any) -> tuple[float, float]:
-    if not isinstance(value, (list, tuple)) or len(value) != 2:
-        raise ValueError("niche.position must be a two-item list")
-    return (float(value[0]), float(value[1]))
+def _position(value: Any) -> CellPosition:
+    return CellPosition.from_value(value)
 
 
 def _epigenetic_marks(data: Any) -> EpigeneticMarks:

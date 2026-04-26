@@ -5,6 +5,7 @@ from math import hypot
 from random import Random
 from typing import Any
 
+from ontocellia.framework.cell import AgentCell, CellPosition, StemCellState
 from ontocellia.framework.genome import AgentGenome, Gene
 
 
@@ -31,10 +32,17 @@ class Niche:
 
     id: str
     required_fate: str
-    position: tuple[float, float]
+    position: CellPosition | tuple[float, ...] | list[float] | dict[str, Any]
     demand: int = 1
     occupied_by: list[int] = field(default_factory=list)
     vacant_replacements: list[int] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        self.position = CellPosition.from_value(self.position)
+        if not self.position.node_id:
+            self.position.node_id = self.id
+        if not self.position.region:
+            self.position.region = self.id
 
 
 @dataclass(slots=True)
@@ -65,27 +73,6 @@ class TaskMicroenvironment:
             if niche.id == niche_id:
                 return niche
         raise KeyError(f"unknown niche: {niche_id}")
-
-
-@dataclass(slots=True)
-class AgentCell:
-    """One autonomous cell-agent in the tissue."""
-
-    id: int
-    stage: str
-    fate: str
-    position: tuple[float, float]
-    lineage_parent: int | None = None
-    niche_id: str | None = None
-    expressed_gene_ids: list[str] = field(default_factory=list)
-    age: int = 0
-    energy: float = 1.0
-    alive: bool = True
-    replaces_cell_id: int | None = None
-
-    @property
-    def differentiated(self) -> bool:
-        return self.stage == "differentiated"
 
 
 @dataclass(slots=True)
@@ -123,7 +110,12 @@ class TissueRuntime:
                 id=cell_id,
                 stage="stem",
                 fate="stem",
-                position=(rng.uniform(3.5, 6.5), rng.uniform(3.5, 6.5)),
+                position=CellPosition(
+                    node_id=f"stem-reserve-{cell_id}",
+                    region="stem-reserve",
+                    embedding=(rng.uniform(3.5, 6.5), rng.uniform(3.5, 6.5), rng.uniform(0.0, 2.0)),
+                ),
+                stage_state=StemCellState(plasticity=1.0, division_potential=1.0),
             )
         runtime = cls(
             genome=genome,
@@ -181,6 +173,8 @@ class TissueRuntime:
             for interface in self.environment.interfaces:
                 if not interface.accepts(cell):
                     continue
+                if not cell.accepts_interface(interface.id):
+                    continue
                 for gene_id in cell.expressed_gene_ids:
                     action = {
                         "cell_id": cell.id,
@@ -228,7 +222,8 @@ class TissueRuntime:
                 committed = self._differentiate(source, niche)
                 niche.occupied_by.append(committed.id)
 
-    def _select_plastic_cell(self, prefer_near: tuple[float, float]) -> AgentCell | None:
+    def _select_plastic_cell(self, prefer_near: CellPosition | tuple[float, ...] | list[float] | dict[str, Any]) -> AgentCell | None:
+        target = CellPosition.from_value(prefer_near)
         candidates = [
             cell
             for cell in self.cells.values()
@@ -236,16 +231,18 @@ class TissueRuntime:
         ]
         if not candidates:
             return None
-        candidates.sort(key=lambda cell: (_distance(cell.position, prefer_near), _stage_rank(cell.stage), cell.id))
+        candidates.sort(key=lambda cell: (_graph_distance(cell.position, target), _stage_rank(str(cell.stage)), cell.id))
         return candidates[0]
 
     def _differentiate(self, cell: AgentCell, niche: Niche) -> AgentCell:
-        expressed = self.genome.expressed_for_fate(niche.required_fate, self.environment.morphogens)
-        cell.stage = "differentiated"
-        cell.fate = niche.required_fate
-        cell.niche_id = niche.id
-        cell.expressed_gene_ids = [gene.id for gene in expressed]
-        cell.position = _step_toward(cell.position, niche.position, fraction=0.85)
+        cell.position = _move_position_toward(cell.position, niche.position, fraction=0.85)
+        cell.commit_to_fate(niche.required_fate, niche.id, self.genome, self.environment.morphogens)
+        cell.position = CellPosition(
+            node_id=niche.position.node_id,
+            region=niche.position.region,
+            neighbors=list(niche.position.neighbors),
+            embedding=cell.position.embedding,
+        )
         self.trace.record(
             "differentiation",
             cell_id=cell.id,
@@ -279,30 +276,36 @@ class TissueRuntime:
         return replacement
 
     def _spawn_child(self, parent: AgentCell, stage: str, fate: str, position: tuple[float, float]) -> AgentCell:
-        child = AgentCell(
-            id=self.next_cell_id,
-            stage=stage,
-            fate=fate,
-            position=(position[0] + self.rng.uniform(-0.25, 0.25), position[1] + self.rng.uniform(-0.25, 0.25)),
-            lineage_parent=parent.id,
-            energy=max(0.25, parent.energy * 0.55),
+        base_position = CellPosition.from_value(position)
+        child_position = CellPosition(
+            node_id=base_position.neighbors[0] if base_position.neighbors else base_position.node_id,
+            region=base_position.region,
+            neighbors=list(base_position.neighbors),
+            embedding=(
+                base_position.embedding[0] + self.rng.uniform(-0.25, 0.25),
+                base_position.embedding[1] + self.rng.uniform(-0.25, 0.25),
+                base_position.embedding[2] + self.rng.uniform(-0.25, 0.25),
+            ),
         )
+        child = parent.spawn_child(self.next_cell_id, stage=stage, fate=fate, position=child_position)
         self.cells[child.id] = child
         self.next_cell_id += 1
         self.trace.record("division", parent_cell_id=parent.id, child_cell_id=child.id, child_stage=stage, fate=fate)
         return child
 
     def _reprogram_for_regeneration(self, niche: Niche) -> AgentCell | None:
-        candidates = [cell for cell in self.cells.values() if cell.differentiated and cell.fate != niche.required_fate]
+        regeneration_pressure = self.environment.morphogens.signal("repair_pressure") + self.environment.morphogens.signal("niche_vacancy")
+        candidates = [cell for cell in self.cells.values() if cell.fate != niche.required_fate and cell.can_reprogram(regeneration_pressure)]
         if not candidates:
             return None
-        candidates.sort(key=lambda cell: (_distance(cell.position, niche.position), cell.id))
+        candidates.sort(key=lambda cell: (_graph_distance(cell.position, niche.position), cell.id))
         cell = candidates[0]
         cell.stage = "progenitor"
         cell.fate = niche.required_fate
         cell.niche_id = None
         cell.expressed_gene_ids = []
         cell.energy *= 0.6
+        cell.record_event("reprogramming", target_fate=niche.required_fate, niche_id=niche.id)
         self.trace.record("reprogramming", cell_id=cell.id, target_fate=niche.required_fate, niche_id=niche.id)
         return cell
 
@@ -311,7 +314,7 @@ class TissueRuntime:
             if cell.niche_id is None:
                 continue
             niche = self.environment.niche_by_id(cell.niche_id)
-            cell.position = _step_toward(cell.position, niche.position, fraction=0.35)
+            cell.position = _move_position_toward(cell.position, niche.position, fraction=0.35)
 
     def _age_cells(self) -> None:
         for cell in self.cells.values():
@@ -320,12 +323,31 @@ class TissueRuntime:
                 cell.fate = "stem"
 
 
-def _distance(left: tuple[float, float], right: tuple[float, float]) -> float:
-    return hypot(left[0] - right[0], left[1] - right[1])
+def _embedding_distance(left: tuple[float, float, float], right: tuple[float, float, float]) -> float:
+    return hypot(hypot(left[0] - right[0], left[1] - right[1]), left[2] - right[2])
 
 
-def _step_toward(left: tuple[float, float], right: tuple[float, float], fraction: float) -> tuple[float, float]:
-    return (left[0] + (right[0] - left[0]) * fraction, left[1] + (right[1] - left[1]) * fraction)
+def _graph_distance(left: CellPosition, right: CellPosition) -> float:
+    if left.node_id == right.node_id:
+        return 0.0
+    if left.node_id in right.neighbors or right.node_id in left.neighbors:
+        return 1.0
+    if left.region and right.region and left.region == right.region:
+        return 2.0
+    return 3.0 + _embedding_distance(left.embedding, right.embedding)
+
+
+def _move_position_toward(left: CellPosition, right: CellPosition, fraction: float) -> CellPosition:
+    return CellPosition(
+        node_id=left.node_id,
+        region=left.region,
+        neighbors=list(left.neighbors),
+        embedding=(
+            left.embedding[0] + (right.embedding[0] - left.embedding[0]) * fraction,
+            left.embedding[1] + (right.embedding[1] - left.embedding[1]) * fraction,
+            left.embedding[2] + (right.embedding[2] - left.embedding[2]) * fraction,
+        ),
+    )
 
 
 def _stage_rank(stage: str) -> int:
