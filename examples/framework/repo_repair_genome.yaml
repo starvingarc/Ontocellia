@@ -39,3 +39,25 @@ genes:
       - Validate evidence.
     validation_hooks:
       - git diff --check
+
+regulatory_elements:
+  - id: promoter_repair_from_failure
+    kind: promoter
+    target_gene_id: gene_repair_from_test_failures
+    signals: [test_failure]
+    strength: 0.25
+  - id: enhancer_review_under_risk
+    kind: enhancer
+    target_gene_id: gene_review_boundary
+    signals: [risk, review_pressure]
+    strength: 0.15
+  - id: silencer_explore_under_repair
+    kind: silencer
+    target_gene_id: gene_inspect_context
+    signals: [repair_pressure]
+    strength: 0.1
+
+epigenetic_defaults:
+  fate_locks:
+    repair: 0.2
+    reviewer: 0.15

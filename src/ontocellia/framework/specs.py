@@ -5,13 +5,20 @@ from typing import Any
 
 import yaml
 
-from ontocellia.framework.core import AgentGenome, ExtracellularInterface, Gene, MorphogenField, Niche, TaskMicroenvironment
+from ontocellia.framework.core import ExtracellularInterface, MorphogenField, Niche, TaskMicroenvironment
+from ontocellia.framework.genome import AgentGenome, EpigeneticMarks, Gene, RegulatoryElement
 
 
 def load_agent_genome(path: str | Path) -> AgentGenome:
     data = _load_yaml(path)
     genes = [Gene(**_strip_type(gene_data)) for gene_data in data.get("genes", [])]
-    return AgentGenome(genes=genes, metadata=dict(data.get("metadata", {})))
+    regulatory_elements = [RegulatoryElement(**element_data) for element_data in data.get("regulatory_elements", [])]
+    return AgentGenome(
+        genes=genes,
+        metadata=dict(data.get("metadata", {})),
+        regulatory_elements=regulatory_elements,
+        epigenetic_defaults=_epigenetic_marks(data.get("epigenetic_defaults", {})),
+    )
 
 
 def load_task_microenvironment(path: str | Path) -> TaskMicroenvironment:
@@ -64,3 +71,14 @@ def _position(value: Any) -> tuple[float, float]:
     if not isinstance(value, (list, tuple)) or len(value) != 2:
         raise ValueError("niche.position must be a two-item list")
     return (float(value[0]), float(value[1]))
+
+
+def _epigenetic_marks(data: Any) -> EpigeneticMarks:
+    if data is None:
+        return EpigeneticMarks()
+    if not isinstance(data, dict):
+        raise ValueError("epigenetic_defaults must be a mapping")
+    return EpigeneticMarks(
+        fate_locks={str(name): float(value) for name, value in data.get("fate_locks", {}).items()},
+        gene_locks={str(name): float(value) for name, value in data.get("gene_locks", {}).items()},
+    )

@@ -5,67 +5,7 @@ from math import hypot
 from random import Random
 from typing import Any
 
-
-FATE_BY_GENE_CATEGORY = {
-    "exploration": "explorer",
-    "planning": "planner",
-    "implementation": "builder",
-    "regeneration": "repair",
-    "repair": "repair",
-    "verification": "reviewer",
-    "review": "reviewer",
-    "memory": "memory",
-    "quiescence": "quiescent",
-}
-
-
-@dataclass(slots=True)
-class Gene:
-    """Lowest-level endogenous control unit in an agent genome."""
-
-    id: str
-    category: str
-    morphogen_affinity: list[str]
-    encoded_response: list[str]
-    expression_window: list[str] = field(default_factory=list)
-    inhibitors: list[str] = field(default_factory=list)
-    suppression_cues: list[str] = field(default_factory=list)
-    constraints: dict[str, Any] = field(default_factory=dict)
-    validation_hooks: list[str] = field(default_factory=list)
-    heritability: dict[str, Any] = field(default_factory=dict)
-
-    @property
-    def fate_bias(self) -> str:
-        return FATE_BY_GENE_CATEGORY.get(self.category, self.category)
-
-    def expression_score(self, morphogens: "MorphogenField") -> float:
-        promoter_score = sum(morphogens.signal(name) for name in self.morphogen_affinity)
-        inhibitor_score = sum(morphogens.signal(name) for name in self.inhibitors)
-        return max(0.0, promoter_score - inhibitor_score)
-
-
-@dataclass(slots=True)
-class AgentGenome:
-    """Heritable program shared by a tissue lineage."""
-
-    genes: list[Gene]
-    metadata: dict[str, Any] = field(default_factory=dict)
-
-    def expressed_for_fate(self, fate: str, morphogens: "MorphogenField", limit: int = 2) -> list[Gene]:
-        scored = [
-            (gene.expression_score(morphogens), gene)
-            for gene in self.genes
-            if gene.fate_bias == fate and gene.expression_score(morphogens) > 0.0
-        ]
-        scored.sort(key=lambda item: (-item[0], item[1].id))
-        return [gene for _, gene in scored[:limit]]
-
-    def dominant_fate_for(self, morphogens: "MorphogenField") -> str:
-        scored = [(gene.expression_score(morphogens), gene.fate_bias, gene.id) for gene in self.genes]
-        scored.sort(key=lambda item: (-item[0], item[1], item[2]))
-        if not scored or scored[0][0] <= 0.0:
-            return "quiescent"
-        return scored[0][1]
+from ontocellia.framework.genome import AgentGenome, Gene
 
 
 @dataclass(slots=True)
