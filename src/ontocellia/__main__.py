@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
 from ontocellia.config import GeneAsset, GeneKind, OntocelliaConfig
 from ontocellia.experiments import ExperimentRunner
+from ontocellia.framework import TissueRuntime, load_agent_genome, load_task_microenvironment
 from ontocellia.observation import export_summary, plot_fate_timeline, plot_fields, plot_interaction_graph, plot_lineage
 from ontocellia.scheduler.runtime import ReferenceRuntime
 from ontocellia.specs import export_schema_docs, validate_experiment_spec, validate_model_specs
@@ -47,6 +49,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     schema_parser = subparsers.add_parser("schema-docs", help="Export Markdown schema reference docs.")
     schema_parser.add_argument("--output", type=Path, default=Path("docs/schema"))
+
+    tissue_parser = subparsers.add_parser("tissue", help="Run an agent tissue from AgentGenome and TaskMicroenvironment specs.")
+    tissue_parser.add_argument("--genome-spec", type=Path, required=True)
+    tissue_parser.add_argument("--environment-spec", type=Path, required=True)
+    tissue_parser.add_argument("--steps", type=int, default=8)
+    tissue_parser.add_argument("--seed", type=int, default=7)
+    tissue_parser.add_argument("--stem-cells", type=int, default=6)
+    tissue_parser.add_argument("--output", type=Path, default=Path("artifacts/tissue"))
     return parser
 
 
@@ -127,9 +137,32 @@ def run_schema_docs(args: argparse.Namespace) -> None:
         print(path)
 
 
+def run_tissue(args: argparse.Namespace) -> None:
+    genome = load_agent_genome(args.genome_spec)
+    environment = load_task_microenvironment(args.environment_spec)
+    tissue = TissueRuntime.seeded(genome=genome, environment=environment, stem_cells=args.stem_cells, seed=args.seed)
+    tissue.develop(ticks=args.steps)
+    actions = tissue.execute()
+    args.output.mkdir(parents=True, exist_ok=True)
+    summary = {
+        "objective": environment.objective,
+        "ticks": tissue.tick_count,
+        "population": len(tissue.cells),
+        "fate_counts": tissue.fate_counts(),
+        "niche_occupancy": tissue.niche_occupancy(),
+        "actions": actions,
+    }
+    summary_path = args.output / "tissue_summary.json"
+    trace_path = args.output / "tissue_trace.json"
+    summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True), encoding="utf-8")
+    trace_path.write_text(json.dumps(tissue.trace.events, indent=2, sort_keys=True), encoding="utf-8")
+    print(f"Tissue summary written to {summary_path}")
+    print(f"Tissue trace written to {trace_path}")
+
+
 def main(argv: list[str] | None = None) -> None:
     args_list = list(sys.argv[1:] if argv is None else argv)
-    commands = {"run", "experiment", "validate", "schema-docs"}
+    commands = {"run", "experiment", "validate", "schema-docs", "tissue"}
     if args_list and args_list[0] in commands:
         args = build_parser().parse_args(args_list)
         if args.command == "run":
@@ -140,6 +173,8 @@ def main(argv: list[str] | None = None) -> None:
             run_validate(args)
         elif args.command == "schema-docs":
             run_schema_docs(args)
+        elif args.command == "tissue":
+            run_tissue(args)
         return
     run_simulation(build_legacy_parser().parse_args(args_list))
 

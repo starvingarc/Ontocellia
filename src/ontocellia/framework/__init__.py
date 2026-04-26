@@ -11,6 +11,7 @@ from .core import (
     TissueRuntime,
     TissueTrace,
 )
+from .specs import load_agent_genome, load_task_microenvironment
 
 __all__ = [
     "AgentCell",
@@ -22,4 +23,6 @@ __all__ = [
     "TaskMicroenvironment",
     "TissueRuntime",
     "TissueTrace",
+    "load_agent_genome",
+    "load_task_microenvironment",
 ]

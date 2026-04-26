@@ -1,11 +1,15 @@
 # Ontocellia
 
-Ontocellia is a developmental multi-agent experiment framework for building decentralized, cell-like systems.
+Ontocellia is a developmental agent-tissue framework for building decentralized, self-organizing, self-repairing multi-agent systems.
 
-Agents share one genome-like program, but diverge through local state, microenvironment, contact signals, fate commitment, and weak system-level selection pressure. The bundled runtime is a reference implementation for reproducible developmental experiments.
+Agents are modeled as cells. A shared genome defines inheritable genes, a task microenvironment releases morphogens, and initially plastic cells differentiate into a functional tissue around positioned niches. The bundled simulation and experiment tools are reference substrates for studying this framework.
 
 ## Features
 
+- `ontocellia.framework` agent tissue primitives: `Gene`, `AgentGenome`, `TaskMicroenvironment`, `Niche`, `ExtracellularInterface`, `TissueRuntime`
+- Task-induced differentiation from stem-like cells into explorer, planner, builder, repair, reviewer, memory, and quiescent fates
+- Spatial niche occupancy, chemotaxis-like positioning, and stem/progenitor-mediated regeneration
+- Extracellular interfaces for membrane channels, extracellular matrix, and future MCP/LLM/tool adapters
 - Shared `GenomeProgram` with per-agent state divergence
 - YAML/JSON `GenomeSpec`, `EnvironmentSpec`, and `ExperimentSpec`
 - Continuous developmental dynamics with attractor commitment
@@ -19,6 +23,7 @@ Agents share one genome-like program, but diverge through local state, microenvi
 ```bash
 conda env create -f environment.yml
 conda activate ontocellia
+python -m ontocellia tissue --genome-spec examples/framework/repo_repair_genome.yaml --environment-spec examples/framework/failing_tests_environment.yaml --steps 4 --output artifacts/repo_repair_tissue
 python -m ontocellia run --steps 20 --output artifacts/demo
 python -m ontocellia run --genome-spec examples/specs/minimal_genome.yaml --environment-spec examples/specs/minimal_environment.yaml --steps 40 --output artifacts/spec_demo
 python -m ontocellia experiment --experiment-spec examples/experiments/contact_ablation.yaml --output artifacts/contact_ablation
@@ -57,6 +62,18 @@ Try the minimal tissue example:
 ```bash
 python examples/framework/repo_repair_tissue.py
 ```
+
+Or run the same idea from YAML:
+
+```bash
+python -m ontocellia tissue \
+  --genome-spec examples/framework/repo_repair_genome.yaml \
+  --environment-spec examples/framework/failing_tests_environment.yaml \
+  --steps 4 \
+  --output artifacts/repo_repair_tissue
+```
+
+This writes `tissue_summary.json` and `tissue_trace.json`.
 
 ## Experiments
 

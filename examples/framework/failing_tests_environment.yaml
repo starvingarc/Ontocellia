@@ -1,0 +1,35 @@
+metadata:
+  name: failing-tests-microenvironment
+  version: 0.1.0
+
+task:
+  objective: Fix failing tests while preserving existing behavior.
+
+morphogens:
+  ambiguity: 0.8
+  missing_context: 0.5
+  test_failure: 0.9
+  repair_pressure: 0.7
+  review_pressure: 0.55
+
+niches:
+  - id: repair-niche
+    required_fate: repair
+    position: [10.0, 4.0]
+    demand: 2
+  - id: exploration-front
+    required_fate: explorer
+    position: [2.0, 8.0]
+    demand: 1
+  - id: review-boundary
+    required_fate: reviewer
+    position: [7.0, 7.0]
+    demand: 1
+
+interfaces:
+  - id: pytest
+    kind: membrane_channel
+    accepts_fates: [repair, reviewer]
+  - id: workspace
+    kind: extracellular_matrix
+    accepts_fates: [explorer, repair]

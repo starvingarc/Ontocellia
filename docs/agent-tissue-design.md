@@ -221,7 +221,7 @@ The tissue runtime should proceed through repeated developmental ticks.
 
 This loop should be deterministic where possible. LLM calls may introduce nondeterminism, so the harness should capture prompts, model settings, outputs, tool calls, and decisions as part of the tissue trace.
 
-### Initial Framework Implementation
+### Current Framework Implementation
 
 The current implementation introduces a small programmable framework layer in `ontocellia.framework`.
 
@@ -237,7 +237,7 @@ It contains:
 - `TissueRuntime`: deterministic development, niche filling, regeneration, position updates, and effector action emission
 - `TissueTrace`: lineage and tissue events
 
-The implementation is intentionally small and sits beside the existing simulation runtime. It gives Ontocellia a direct agent-harness API while preserving the v0.2 experimental simulator as a reference substrate.
+The implementation is framework-first. The direct API and YAML specs define an agent tissue; the older simulation and experiment runtime can be used as a reference substrate for dynamics, metrics, and ablation studies.
 
 ## 6. Genes as the Lowest-Level Unit
 

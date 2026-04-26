@@ -1,0 +1,41 @@
+metadata:
+  name: repo-repair-genome
+  version: 0.1.0
+
+genes:
+  - type: Gene
+    id: gene_inspect_context
+    category: exploration
+    morphogen_affinity: [ambiguity, missing_context]
+    expression_window:
+      - task context is incomplete
+    encoded_response:
+      - Inspect nearby evidence.
+      - Emit structured findings.
+    constraints:
+      max_files: 8
+
+  - type: Gene
+    id: gene_repair_from_test_failures
+    category: regeneration
+    morphogen_affinity: [test_failure, repair_pressure, niche_vacancy]
+    expression_window:
+      - validation failure or niche vacancy is present
+    encoded_response:
+      - Patch the narrowest cause.
+      - Rerun validation.
+    suppression_cues:
+      - speculative broad rewrites
+      - suppressing tests
+    validation_hooks:
+      - python -m pytest -q
+
+  - type: Gene
+    id: gene_review_boundary
+    category: verification
+    morphogen_affinity: [review_pressure, risk]
+    encoded_response:
+      - Check blast radius.
+      - Validate evidence.
+    validation_hooks:
+      - git diff --check
