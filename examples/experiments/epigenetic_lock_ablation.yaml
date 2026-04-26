@@ -1,0 +1,19 @@
+metadata:
+  name: epigenetic-lock-ablation
+  version: "0.2.0"
+  description: Compare normal developmental commitment against a run with epigenetic lock disabled.
+base:
+  genome: ../specs/minimal_genome.yaml
+  environment: ../specs/minimal_environment.yaml
+  steps: 40
+  seed: 11
+variants:
+  - name: baseline
+  - name: no_epigenetic_lock
+    config_patch:
+      enable_epigenetic_lock: false
+outputs:
+  summary: true
+  plots: true
+  metrics_csv: true
+  report: true

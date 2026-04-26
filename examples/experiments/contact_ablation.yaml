@@ -1,0 +1,19 @@
+metadata:
+  name: contact-signaling-ablation
+  version: "0.2.0"
+  description: Compare the minimal genome against a variant with contact programs disabled.
+base:
+  genome: ../specs/minimal_genome.yaml
+  environment: ../specs/minimal_environment.yaml
+  steps: 40
+  seed: 7
+variants:
+  - name: baseline
+  - name: no_contact
+    genome_patch:
+      contact_programs: []
+outputs:
+  summary: true
+  plots: true
+  metrics_csv: true
+  report: true

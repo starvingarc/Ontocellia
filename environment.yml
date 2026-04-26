@@ -1,0 +1,13 @@
+name: ontocellia
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - matplotlib>=3.10
+  - networkx>=3.5
+  - numpy>=2.3
+  - pyyaml>=6.0
+  - pytest>=9.0
+  - pip
+  - pip:
+      - -e .

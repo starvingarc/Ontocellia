@@ -6,6 +6,7 @@ from typing import Any
 
 import yaml
 
+from .experiment import ExperimentSpec
 from .schema import EnvironmentSpec, GenomeSpec
 
 
@@ -32,3 +33,8 @@ def load_genome_spec(path: str | Path) -> GenomeSpec:
 def load_environment_spec(path: str | Path) -> EnvironmentSpec:
     file_path = Path(path)
     return EnvironmentSpec.from_dict(_load_mapping(file_path), source_path=file_path)
+
+
+def load_experiment_spec(path: str | Path) -> ExperimentSpec:
+    file_path = Path(path)
+    return ExperimentSpec.from_dict(_load_mapping(file_path), source_path=file_path)

@@ -15,6 +15,7 @@ from ontocellia.fields import Microenvironment
 from ontocellia.genes import GeneRegistry
 from ontocellia.graph import InteractionGraph
 from ontocellia.metrics import MetricsRecorder
+from ontocellia.scheduler.pipeline import StepPipeline
 from ontocellia.specs import EnvironmentSpec, GenomeSpec, load_environment_spec, load_genome_spec
 from ontocellia.substrate import SpatialSubstrate
 
@@ -35,6 +36,7 @@ class OntocelliaRuntime:
     organ_selection_field: OrganSelectionField | None = field(init=False, default=None)
     gene_registry: GeneRegistry = field(init=False)
     metrics: MetricsRecorder = field(init=False)
+    pipeline: StepPipeline = field(init=False)
     environment_model: object | None = field(init=False, default=None)
     cells: dict[int, CellState] = field(default_factory=dict, init=False)
     communities: dict[int, CommunityState] = field(default_factory=dict, init=False)
@@ -81,6 +83,7 @@ class OntocelliaRuntime:
         self.graph = InteractionGraph(self.config)
         self.gene_registry = GeneRegistry(list(self.config.default_genes))
         self.metrics = MetricsRecorder()
+        self.pipeline = StepPipeline()
         if self.genome_spec is not None and self.environment_spec is not None:
             self.mode = SPEC_MODE
             self._initialize_spec_mode()
@@ -184,15 +187,7 @@ class OntocelliaRuntime:
             self.next_cell_id += 1
 
     def step(self, steps: int = 1) -> None:
-        for _ in range(steps):
-            if not self.cells:
-                self.tick_count += 1
-                self.metrics.record(self)
-                continue
-            if self.mode == SPEC_MODE:
-                self._step_once_spec()
-            else:
-                self._step_once_legacy()
+        self.pipeline.step(self, steps)
 
     def _step_once_legacy(self) -> None:
         self.tick_count += 1

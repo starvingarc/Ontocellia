@@ -10,24 +10,38 @@ from .architecture import (
     OrganSelectionField,
 )
 from .config import GeneAsset, GeneKind, OntocelliaConfig
+from .experiments import ExperimentRunner
+from .framework import AgentCell, AgentGenome, ExtracellularInterface, Gene, MorphogenField, Niche, TaskMicroenvironment, TissueRuntime, TissueTrace
 from .scheduler.runtime import OntocelliaRuntime, ReferenceRuntime
-from .specs import EnvironmentSpec, GenomeSpec, load_environment_spec, load_genome_spec
+from .specs import EnvironmentSpec, ExperimentSpec, GenomeSpec, load_environment_spec, load_experiment_spec, load_genome_spec
 
 __all__ = [
+    "AgentCell",
+    "AgentGenome",
     "CellStateModel",
     "CommunityState",
     "EnvironmentModel",
     "EnvironmentSpec",
+    "ExperimentRunner",
+    "ExperimentSpec",
+    "ExtracellularInterface",
     "FateLandscape",
+    "Gene",
     "GeneAsset",
     "GeneKind",
     "GenomeProgram",
     "GenomeSpec",
     "LifeProcessModel",
+    "MorphogenField",
+    "Niche",
     "OntocelliaConfig",
     "OntocelliaRuntime",
     "OrganSelectionField",
     "ReferenceRuntime",
+    "TaskMicroenvironment",
+    "TissueRuntime",
+    "TissueTrace",
     "load_environment_spec",
+    "load_experiment_spec",
     "load_genome_spec",
 ]
