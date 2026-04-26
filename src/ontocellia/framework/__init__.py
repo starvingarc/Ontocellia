@@ -23,16 +23,21 @@ from .cell import (
 )
 from .genome import AgentGenome, EpigeneticMarks, ExpressedGeneProgram, ExpressionContext, Gene, LineageMutation, RegulatoryElement
 from .induction import InductionDraft, InductionRequest, TemplateInductionCompiler
+from .llm import ActionIntent, CellPrompt, CellPromptBuilder, EffectorRuntime, LLMResponse, MockLLMProvider
 from .specs import load_agent_genome, load_task_microenvironment
 
 __all__ = [
+    "ActionIntent",
     "AgentCell",
     "AdhesionProfile",
     "AgentGenome",
+    "CellPrompt",
+    "CellPromptBuilder",
     "CellPosition",
     "CellStage",
     "CompetenceProfile",
     "DifferentiatedCellState",
+    "EffectorRuntime",
     "EpigeneticMarks",
     "ExtracellularInterface",
     "ExpressedGeneProgram",
@@ -49,6 +54,8 @@ __all__ = [
     "TaskMicroenvironment",
     "InductionDraft",
     "InductionRequest",
+    "LLMResponse",
+    "MockLLMProvider",
     "TemplateInductionCompiler",
     "TissueRuntime",
     "TissueTrace",

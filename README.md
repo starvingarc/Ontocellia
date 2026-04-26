@@ -24,6 +24,8 @@ Agents are modeled as cells. A shared genome defines inheritable genes, a task m
 conda env create -f environment.yml
 conda activate ontocellia
 python -m ontocellia tissue --genome-spec examples/framework/repo_repair_genome.yaml --environment-spec examples/framework/failing_tests_environment.yaml --steps 4 --output artifacts/repo_repair_tissue
+python -m ontocellia induce --task "Fix failing tests" --domain repo_repair --output artifacts/induced
+python -m ontocellia tissue --genome-spec artifacts/induced/genome.yaml --environment-spec artifacts/induced/environment.yaml --effector mock-llm --output artifacts/induced_tissue
 python -m ontocellia run --steps 20 --output artifacts/demo
 python -m ontocellia run --genome-spec examples/specs/minimal_genome.yaml --environment-spec examples/specs/minimal_environment.yaml --steps 40 --output artifacts/spec_demo
 python -m ontocellia experiment --experiment-spec examples/experiments/contact_ablation.yaml --output artifacts/contact_ablation
@@ -74,6 +76,29 @@ python -m ontocellia tissue \
 ```
 
 This writes `tissue_summary.json` and `tissue_trace.json`.
+
+## Induction And LLM Effectors
+
+`ontocellia induce` is the compile-time induction layer: it turns a natural language task into genome and microenvironment specs.
+
+```bash
+python -m ontocellia induce \
+  --task "Fix failing tests while preserving behavior" \
+  --domain repo_repair \
+  --output artifacts/induced
+```
+
+`--effector mock-llm` enables the runtime cell-effector layer. It translates expressed gene programs into structured action intents without calling external APIs.
+
+```bash
+python -m ontocellia tissue \
+  --genome-spec artifacts/induced/genome.yaml \
+  --environment-spec artifacts/induced/environment.yaml \
+  --effector mock-llm \
+  --output artifacts/induced_tissue
+```
+
+Real LLM provider adapters are intentionally separate from the deterministic mock provider.
 
 ## Experiments
 

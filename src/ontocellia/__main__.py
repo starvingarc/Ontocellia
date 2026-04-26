@@ -7,7 +7,7 @@ from pathlib import Path
 
 from ontocellia.config import GeneAsset, GeneKind, OntocelliaConfig
 from ontocellia.experiments import ExperimentRunner
-from ontocellia.framework import InductionRequest, TemplateInductionCompiler, TissueRuntime, load_agent_genome, load_task_microenvironment
+from ontocellia.framework import EffectorRuntime, InductionRequest, MockLLMProvider, TemplateInductionCompiler, TissueRuntime, load_agent_genome, load_task_microenvironment
 from ontocellia.observation import export_summary, plot_fate_timeline, plot_fields, plot_interaction_graph, plot_lineage
 from ontocellia.scheduler.runtime import ReferenceRuntime
 from ontocellia.specs import export_schema_docs, validate_experiment_spec, validate_model_specs
@@ -56,6 +56,7 @@ def build_parser() -> argparse.ArgumentParser:
     tissue_parser.add_argument("--steps", type=int, default=8)
     tissue_parser.add_argument("--seed", type=int, default=7)
     tissue_parser.add_argument("--stem-cells", type=int, default=6)
+    tissue_parser.add_argument("--effector", choices=["rule", "mock-llm"], default="rule")
     tissue_parser.add_argument("--output", type=Path, default=Path("artifacts/tissue"))
 
     induce_parser = subparsers.add_parser("induce", help="Compile a natural language task into agent tissue specs.")
@@ -149,7 +150,8 @@ def run_tissue(args: argparse.Namespace) -> None:
     environment = load_task_microenvironment(args.environment_spec)
     tissue = TissueRuntime.seeded(genome=genome, environment=environment, stem_cells=args.stem_cells, seed=args.seed)
     tissue.develop(ticks=args.steps)
-    actions = tissue.execute()
+    effectors = EffectorRuntime(MockLLMProvider()) if args.effector == "mock-llm" else None
+    actions = tissue.execute(effectors=effectors)
     args.output.mkdir(parents=True, exist_ok=True)
     summary = {
         "objective": environment.objective,
@@ -163,6 +165,10 @@ def run_tissue(args: argparse.Namespace) -> None:
     trace_path = args.output / "tissue_trace.json"
     summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True), encoding="utf-8")
     trace_path.write_text(json.dumps(tissue.trace.events, indent=2, sort_keys=True), encoding="utf-8")
+    if args.effector == "mock-llm":
+        (args.output / "action_intents.json").write_text(json.dumps(actions, indent=2, sort_keys=True), encoding="utf-8")
+        llm_trace = [event for event in tissue.trace.events if event["type"] == "llm_effector"]
+        (args.output / "llm_trace.json").write_text(json.dumps(llm_trace, indent=2, sort_keys=True), encoding="utf-8")
     print(f"Tissue summary written to {summary_path}")
     print(f"Tissue trace written to {trace_path}")
 

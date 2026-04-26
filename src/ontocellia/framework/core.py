@@ -165,7 +165,9 @@ class TissueRuntime:
             reason=reason,
         )
 
-    def execute(self) -> list[dict[str, Any]]:
+    def execute(self, effectors: Any | None = None) -> list[dict[str, Any]]:
+        if effectors is not None:
+            return [intent.as_dict() for intent in effectors.emit_intents(self)]
         actions: list[dict[str, Any]] = []
         for cell in sorted(self.cells.values(), key=lambda item: item.id):
             if not cell.differentiated:

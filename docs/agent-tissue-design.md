@@ -254,6 +254,24 @@ The framework cell object now carries:
 
 `AgentCell` can now construct a genome `ExpressionContext`, spawn lineage children, commit to a fate, record local events, and gate extracellular interface usage through receptor compatibility. `TissueRuntime` uses these methods for differentiation, division, regeneration, reprogramming, and action emission.
 
+### Phase 3 LLM Integration Architecture
+
+LLM integration is split into two layers with different biological meanings.
+
+```text
+LLM Integration Architecture
+├── Induction Compiler
+│   └── natural language task -> culture condition / tissue specs
+└── Cell Effector Layer
+    └── expressed gene program -> structured action intent
+```
+
+The Induction Compiler is a compile-time design assistant. It translates a user task into an induced culture condition: genome, morphogens, niches, extracellular interfaces, candidate gene assets, and experiment drafts. It does not execute task actions.
+
+The Cell Effector Layer is runtime cellular translation machinery. It consumes expressed gene programs, cell state, local microenvironment, and receptor-allowed interfaces, then emits a structured `ActionIntent`. It does not mutate genome, call tools directly, or bypass membrane/receptor gates.
+
+Real LLM providers can be added as provider adapters. The first implementation uses deterministic templates and a mock LLM provider so traces, tests, and reproducibility stay stable.
+
 ## 6. Genes as the Lowest-Level Unit
 
 Ontocellia should treat genes as the lowest-level endogenous units of the system.
