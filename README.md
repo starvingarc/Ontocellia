@@ -122,6 +122,17 @@ python -m ontocellia tissue \
 
 Provider calls write `action_intents.json` and `llm_trace.json`. API keys are read from environment variables and are not written into trace artifacts.
 
+Some MiniMax token-plan keys are issued for a regional host. In that case, pass the matching base URL explicitly:
+
+```bash
+python -m ontocellia tissue \
+  --genome-spec examples/framework/repo_repair_genome.yaml \
+  --environment-spec examples/framework/failing_tests_environment.yaml \
+  --effector minimax \
+  --llm-base-url https://api.minimax.chat/v1 \
+  --output artifacts/minimax_tissue
+```
+
 ## Experiments
 
 Experiments compare a base model against named variants. v0.2 supports top-level patches for config, genome, and environment data.

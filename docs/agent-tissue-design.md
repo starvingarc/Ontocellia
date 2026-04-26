@@ -291,6 +291,8 @@ The current real adapters target OpenAI-compatible chat completion APIs:
 
 The provider receives a `CellPrompt` and must return an `ActionIntent` JSON object. The effector runtime records prompt context, provider name, model, parsed intent, and token usage into `llm_trace.json`. API keys stay in environment variables and are not persisted in trace artifacts.
 
+MiniMax token-plan keys may be bound to a regional host. The runtime keeps `--llm-base-url` explicit so a local deployment can choose the matching endpoint, for example `https://api.minimax.chat/v1`.
+
 ## 6. Genes as the Lowest-Level Unit
 
 Ontocellia should treat genes as the lowest-level endogenous units of the system.

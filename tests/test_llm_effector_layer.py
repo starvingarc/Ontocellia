@@ -201,6 +201,45 @@ def test_openai_compatible_provider_uses_deepseek_defaults_and_parses_intent() -
     assert response.usage["total_tokens"] == 28
 
 
+def test_openai_compatible_provider_parses_minimax_markdown_action_shape() -> None:
+    content = """<think>Reason about the cell state.</think>
+
+```json
+{
+  "action": "propose_patch",
+  "target": "repair-niche",
+  "metadata": {
+    "rationale": "Repair the failing test niche.",
+    "confidence": 0.67,
+    "required_interfaces": ["pytest", "workspace"]
+  },
+  "patch_proposal": {
+    "description": "Inspect failures and propose a minimal patch."
+  }
+}
+```"""
+
+    def fake_transport(url: str, headers: dict[str, str], payload: dict[str, object], timeout: float) -> dict[str, object]:
+        return {"model": "MiniMax-M2.7", "choices": [{"message": {"content": content}}], "usage": {"total_tokens": 42}}
+
+    tissue = make_tissue()
+    prompt = CellPromptBuilder().build(tissue, tissue.cells[0])
+    provider = OpenAICompatibleProvider.from_name(
+        "minimax",
+        env={"MINIMAX_API_KEY": "test-key"},
+        base_url="https://api.minimax.chat/v1",
+        transport=fake_transport,
+    )
+
+    response = provider.complete(prompt)
+
+    assert response.parsed_intent.intent_type == "propose_patch"
+    assert response.parsed_intent.rationale == "Repair the failing test niche."
+    assert response.parsed_intent.required_interfaces == ["pytest", "workspace"]
+    assert response.parsed_intent.confidence == 0.67
+    assert response.parsed_intent.payload["patch_proposal"]["description"] == "Inspect failures and propose a minimal patch."
+
+
 def test_openai_compatible_provider_requires_api_key() -> None:
     try:
         OpenAICompatibleProvider.from_name("kimi", env={})

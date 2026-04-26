@@ -297,17 +297,40 @@ def _post_json(url: str, headers: dict[str, str], payload: dict[str, Any], timeo
 
 def _parse_action_intent(content: str, context: dict[str, Any]) -> ActionIntent:
     data = _json_object(content)
+    metadata = data.get("metadata", {})
+    if not isinstance(metadata, dict):
+        metadata = {}
+    payload = data.get("payload")
+    if not isinstance(payload, dict):
+        known_keys = {
+            "cell_id",
+            "fate",
+            "expressed_gene_ids",
+            "intent_type",
+            "action",
+            "type",
+            "target",
+            "rationale",
+            "required_interfaces",
+            "confidence",
+            "validation_hooks",
+            "metadata",
+        }
+        payload = {key: value for key, value in data.items() if key not in known_keys}
     return ActionIntent(
         cell_id=int(data.get("cell_id", context["cell_id"])),
         fate=str(data.get("fate", context["fate"])),
         expressed_gene_ids=[str(gene_id) for gene_id in data.get("expressed_gene_ids", context["expressed_gene_ids"])],
-        intent_type=str(data.get("intent_type", _intent_type(str(context["fate"]), list(context["expressed_gene_ids"])))),
+        intent_type=str(data.get("intent_type") or data.get("action") or data.get("type") or _intent_type(str(context["fate"]), list(context["expressed_gene_ids"]))),
         target=str(data.get("target", context["position"]["node_id"])),
-        rationale=str(data.get("rationale", content)),
-        required_interfaces=[str(item) for item in data.get("required_interfaces", context["allowed_interfaces"][:1])],
-        confidence=float(data.get("confidence", 0.5)),
+        rationale=str(data.get("rationale") or metadata.get("rationale") or content),
+        required_interfaces=[
+            str(item)
+            for item in (data.get("required_interfaces") or metadata.get("required_interfaces") or context["allowed_interfaces"][:1])
+        ],
+        confidence=float(data.get("confidence") or metadata.get("confidence") or 0.5),
         validation_hooks=[str(item) for item in data.get("validation_hooks", context.get("validation_hooks", []))],
-        payload=dict(data.get("payload", {})),
+        payload=payload,
     )
 
 
@@ -315,14 +338,45 @@ def _json_object(content: str) -> dict[str, Any]:
     try:
         parsed = json.loads(content)
     except json.JSONDecodeError:
-        start = content.find("{")
-        end = content.rfind("}")
-        if start == -1 or end == -1 or end <= start:
-            return {}
-        parsed = json.loads(content[start : end + 1])
+        parsed = _first_json_object(content)
     if not isinstance(parsed, dict):
         return {}
     return parsed
+
+
+def _first_json_object(content: str) -> dict[str, Any]:
+    for start, char in enumerate(content):
+        if char != "{":
+            continue
+        depth = 0
+        in_string = False
+        escape = False
+        for index in range(start, len(content)):
+            current = content[index]
+            if escape:
+                escape = False
+                continue
+            if current == "\\":
+                escape = True
+                continue
+            if current == '"':
+                in_string = not in_string
+                continue
+            if in_string:
+                continue
+            if current == "{":
+                depth += 1
+            elif current == "}":
+                depth -= 1
+                if depth == 0:
+                    try:
+                        parsed = json.loads(content[start : index + 1])
+                    except json.JSONDecodeError:
+                        break
+                    if isinstance(parsed, dict):
+                        return parsed
+                    break
+    return {}
 
 
 def _redacted_raw(raw: dict[str, Any]) -> dict[str, Any]:
