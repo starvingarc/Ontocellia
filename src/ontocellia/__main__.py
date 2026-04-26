@@ -7,7 +7,7 @@ from pathlib import Path
 
 from ontocellia.config import GeneAsset, GeneKind, OntocelliaConfig
 from ontocellia.experiments import ExperimentRunner
-from ontocellia.framework import TissueRuntime, load_agent_genome, load_task_microenvironment
+from ontocellia.framework import InductionRequest, TemplateInductionCompiler, TissueRuntime, load_agent_genome, load_task_microenvironment
 from ontocellia.observation import export_summary, plot_fate_timeline, plot_fields, plot_interaction_graph, plot_lineage
 from ontocellia.scheduler.runtime import ReferenceRuntime
 from ontocellia.specs import export_schema_docs, validate_experiment_spec, validate_model_specs
@@ -57,6 +57,13 @@ def build_parser() -> argparse.ArgumentParser:
     tissue_parser.add_argument("--seed", type=int, default=7)
     tissue_parser.add_argument("--stem-cells", type=int, default=6)
     tissue_parser.add_argument("--output", type=Path, default=Path("artifacts/tissue"))
+
+    induce_parser = subparsers.add_parser("induce", help="Compile a natural language task into agent tissue specs.")
+    induce_parser.add_argument("--task", required=True)
+    induce_parser.add_argument("--domain", default="repo_repair")
+    induce_parser.add_argument("--interface", action="append", dest="interfaces", default=[])
+    induce_parser.add_argument("--seed", type=int, default=7)
+    induce_parser.add_argument("--output", type=Path, default=Path("artifacts/induced"))
     return parser
 
 
@@ -160,9 +167,18 @@ def run_tissue(args: argparse.Namespace) -> None:
     print(f"Tissue trace written to {trace_path}")
 
 
+def run_induce(args: argparse.Namespace) -> None:
+    request = InductionRequest(task=args.task, domain=args.domain, available_interfaces=args.interfaces, seed=args.seed)
+    draft = TemplateInductionCompiler().compile(request)
+    paths = draft.write(args.output)
+    print(f"Genome written to {paths['genome']}")
+    print(f"Environment written to {paths['environment']}")
+    print(f"Induction report written to {paths['report']}")
+
+
 def main(argv: list[str] | None = None) -> None:
     args_list = list(sys.argv[1:] if argv is None else argv)
-    commands = {"run", "experiment", "validate", "schema-docs", "tissue"}
+    commands = {"run", "experiment", "validate", "schema-docs", "tissue", "induce"}
     if args_list and args_list[0] in commands:
         args = build_parser().parse_args(args_list)
         if args.command == "run":
@@ -175,6 +191,8 @@ def main(argv: list[str] | None = None) -> None:
             run_schema_docs(args)
         elif args.command == "tissue":
             run_tissue(args)
+        elif args.command == "induce":
+            run_induce(args)
         return
     run_simulation(build_legacy_parser().parse_args(args_list))
 

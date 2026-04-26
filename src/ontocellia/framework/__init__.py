@@ -22,6 +22,7 @@ from .cell import (
     TransitAmplifyingCellState,
 )
 from .genome import AgentGenome, EpigeneticMarks, ExpressedGeneProgram, ExpressionContext, Gene, LineageMutation, RegulatoryElement
+from .induction import InductionDraft, InductionRequest, TemplateInductionCompiler
 from .specs import load_agent_genome, load_task_microenvironment
 
 __all__ = [
@@ -46,6 +47,9 @@ __all__ = [
     "RegulatoryElement",
     "StemCellState",
     "TaskMicroenvironment",
+    "InductionDraft",
+    "InductionRequest",
+    "TemplateInductionCompiler",
     "TissueRuntime",
     "TissueTrace",
     "TransitAmplifyingCellState",
