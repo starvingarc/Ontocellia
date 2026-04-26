@@ -100,6 +100,28 @@ python -m ontocellia tissue \
 
 Real LLM provider adapters are intentionally separate from the deterministic mock provider.
 
+Real provider calls use OpenAI-compatible chat completion endpoints. The current adapters are:
+
+| Provider | Environment variable | Default base URL | Default model |
+| --- | --- | --- | --- |
+| `deepseek` | `DEEPSEEK_API_KEY` | `https://api.deepseek.com` | `deepseek-v4-flash` |
+| `kimi` | `MOONSHOT_API_KEY` or `KIMI_API_KEY` | `https://api.moonshot.ai/v1` | `kimi-k2.6` |
+| `minimax` | `MINIMAX_API_KEY` | `https://api.minimax.io/v1` | `MiniMax-M2.7` |
+
+Example:
+
+```bash
+export DEEPSEEK_API_KEY=...
+python -m ontocellia tissue \
+  --genome-spec artifacts/induced/genome.yaml \
+  --environment-spec artifacts/induced/environment.yaml \
+  --effector deepseek \
+  --llm-model deepseek-v4-flash \
+  --output artifacts/deepseek_tissue
+```
+
+Provider calls write `action_intents.json` and `llm_trace.json`. API keys are read from environment variables and are not written into trace artifacts.
+
 ## Experiments
 
 Experiments compare a base model against named variants. v0.2 supports top-level patches for config, genome, and environment data.

@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import json
+import os
+import urllib.error
+import urllib.request
 from dataclasses import asdict, dataclass, field
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 
 
 @dataclass(slots=True)
@@ -112,6 +116,82 @@ class MockLLMProvider:
         )
 
 
+ProviderTransport = Callable[[str, dict[str, str], dict[str, Any], float], dict[str, Any]]
+
+
+@dataclass(slots=True)
+class OpenAICompatibleProvider:
+    """Real OpenAI-compatible chat-completions provider."""
+
+    name: str
+    api_key: str
+    base_url: str
+    model: str
+    timeout: float = 60.0
+    transport: ProviderTransport | None = None
+
+    @classmethod
+    def from_name(
+        cls,
+        name: str,
+        *,
+        model: str | None = None,
+        base_url: str | None = None,
+        env: dict[str, str] | None = None,
+        transport: ProviderTransport | None = None,
+    ) -> "OpenAICompatibleProvider":
+        environ = env if env is not None else os.environ
+        provider = _provider_defaults(name)
+        api_key = _first_env(environ, provider["key_env"])
+        if not api_key:
+            raise ValueError(f"{name} provider requires one of: {', '.join(provider['key_env'])}")
+        return cls(
+            name=name,
+            api_key=api_key,
+            base_url=base_url or str(provider["base_url"]),
+            model=model or str(provider["model"]),
+            transport=transport,
+        )
+
+    def complete(self, prompt: CellPrompt) -> LLMResponse:
+        payload = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": prompt.system},
+                {
+                    "role": "user",
+                    "content": json.dumps(
+                        {
+                            "context": prompt.context,
+                            "output_schema": prompt.output_schema,
+                            "instruction": "Return exactly one JSON object matching the ActionIntent shape.",
+                        },
+                        ensure_ascii=True,
+                    ),
+                },
+            ],
+            "temperature": 0.2,
+            "stream": False,
+        }
+        headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
+        raw = (self.transport or _post_json)(self._chat_url(), headers, payload, self.timeout)
+        content = str(raw["choices"][0]["message"].get("content", ""))
+        intent = _parse_action_intent(content, prompt.context)
+        return LLMResponse(
+            content=content,
+            parsed_intent=intent,
+            raw=_redacted_raw(raw),
+            model=str(raw.get("model", self.model)),
+            usage={key: int(value) for key, value in raw.get("usage", {}).items() if isinstance(value, int)},
+        )
+
+    def _chat_url(self) -> str:
+        base = self.base_url.rstrip("/")
+        if base.endswith("/chat/completions"):
+            return base
+        return f"{base}/chat/completions"
+
+
 class EffectorRuntime:
     def __init__(self, provider: LLMProvider, prompt_builder: CellPromptBuilder | None = None):
         self.provider = provider
@@ -167,3 +247,83 @@ def _required_interfaces(intent_type: str, allowed: list[str]) -> list[str]:
     preferred = preferences.get(intent_type, allowed)
     selected = [interface_id for interface_id in preferred if interface_id in allowed]
     return selected or allowed[:1]
+
+
+def _provider_defaults(name: str) -> dict[str, object]:
+    providers = {
+        "deepseek": {
+            "key_env": ["DEEPSEEK_API_KEY"],
+            "base_url": "https://api.deepseek.com",
+            "model": "deepseek-v4-flash",
+        },
+        "kimi": {
+            "key_env": ["MOONSHOT_API_KEY", "KIMI_API_KEY"],
+            "base_url": "https://api.moonshot.ai/v1",
+            "model": "kimi-k2.6",
+        },
+        "minimax": {
+            "key_env": ["MINIMAX_API_KEY"],
+            "base_url": "https://api.minimax.io/v1",
+            "model": "MiniMax-M2.7",
+        },
+    }
+    if name not in providers:
+        raise ValueError(f"unknown LLM provider: {name}")
+    return providers[name]
+
+
+def _first_env(environ: dict[str, str], names: object) -> str:
+    for name in names:
+        value = environ.get(str(name), "")
+        if value:
+            return value
+    return ""
+
+
+def _post_json(url: str, headers: dict[str, str], payload: dict[str, Any], timeout: float) -> dict[str, Any]:
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers=headers,
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as error:
+        body = error.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"LLM provider request failed with HTTP {error.code}: {body}") from error
+
+
+def _parse_action_intent(content: str, context: dict[str, Any]) -> ActionIntent:
+    data = _json_object(content)
+    return ActionIntent(
+        cell_id=int(data.get("cell_id", context["cell_id"])),
+        fate=str(data.get("fate", context["fate"])),
+        expressed_gene_ids=[str(gene_id) for gene_id in data.get("expressed_gene_ids", context["expressed_gene_ids"])],
+        intent_type=str(data.get("intent_type", _intent_type(str(context["fate"]), list(context["expressed_gene_ids"])))),
+        target=str(data.get("target", context["position"]["node_id"])),
+        rationale=str(data.get("rationale", content)),
+        required_interfaces=[str(item) for item in data.get("required_interfaces", context["allowed_interfaces"][:1])],
+        confidence=float(data.get("confidence", 0.5)),
+        validation_hooks=[str(item) for item in data.get("validation_hooks", context.get("validation_hooks", []))],
+        payload=dict(data.get("payload", {})),
+    )
+
+
+def _json_object(content: str) -> dict[str, Any]:
+    try:
+        parsed = json.loads(content)
+    except json.JSONDecodeError:
+        start = content.find("{")
+        end = content.rfind("}")
+        if start == -1 or end == -1 or end <= start:
+            return {}
+        parsed = json.loads(content[start : end + 1])
+    if not isinstance(parsed, dict):
+        return {}
+    return parsed
+
+
+def _redacted_raw(raw: dict[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in raw.items() if key.lower() not in {"authorization", "api_key"}}

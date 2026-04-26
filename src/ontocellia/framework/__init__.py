@@ -23,7 +23,7 @@ from .cell import (
 )
 from .genome import AgentGenome, EpigeneticMarks, ExpressedGeneProgram, ExpressionContext, Gene, LineageMutation, RegulatoryElement
 from .induction import InductionDraft, InductionRequest, TemplateInductionCompiler
-from .llm import ActionIntent, CellPrompt, CellPromptBuilder, EffectorRuntime, LLMResponse, MockLLMProvider
+from .llm import ActionIntent, CellPrompt, CellPromptBuilder, EffectorRuntime, LLMResponse, MockLLMProvider, OpenAICompatibleProvider
 from .specs import load_agent_genome, load_task_microenvironment
 
 __all__ = [
@@ -56,6 +56,7 @@ __all__ = [
     "InductionRequest",
     "LLMResponse",
     "MockLLMProvider",
+    "OpenAICompatibleProvider",
     "TemplateInductionCompiler",
     "TissueRuntime",
     "TissueTrace",

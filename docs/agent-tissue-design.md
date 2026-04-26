@@ -270,7 +270,26 @@ The Induction Compiler is a compile-time design assistant. It translates a user 
 
 The Cell Effector Layer is runtime cellular translation machinery. It consumes expressed gene programs, cell state, local microenvironment, and receptor-allowed interfaces, then emits a structured `ActionIntent`. It does not mutate genome, call tools directly, or bypass membrane/receptor gates.
 
-Real LLM providers can be added as provider adapters. The first implementation uses deterministic templates and a mock LLM provider so traces, tests, and reproducibility stay stable.
+Real LLM providers are implemented as provider adapters behind the same cell effector contract. The deterministic `mock-llm` provider is used for tests and local reproducibility. Real providers are selected explicitly through the tissue CLI:
+
+```bash
+python -m ontocellia tissue \
+  --genome-spec artifacts/induced/genome.yaml \
+  --environment-spec artifacts/induced/environment.yaml \
+  --effector deepseek \
+  --llm-model deepseek-v4-flash \
+  --output artifacts/deepseek_tissue
+```
+
+The current real adapters target OpenAI-compatible chat completion APIs:
+
+| Provider | API key environment variable | Default base URL | Default model |
+| --- | --- | --- | --- |
+| `deepseek` | `DEEPSEEK_API_KEY` | `https://api.deepseek.com` | `deepseek-v4-flash` |
+| `kimi` | `MOONSHOT_API_KEY` or `KIMI_API_KEY` | `https://api.moonshot.ai/v1` | `kimi-k2.6` |
+| `minimax` | `MINIMAX_API_KEY` | `https://api.minimax.io/v1` | `MiniMax-M2.7` |
+
+The provider receives a `CellPrompt` and must return an `ActionIntent` JSON object. The effector runtime records prompt context, provider name, model, parsed intent, and token usage into `llm_trace.json`. API keys stay in environment variables and are not persisted in trace artifacts.
 
 ## 6. Genes as the Lowest-Level Unit
 

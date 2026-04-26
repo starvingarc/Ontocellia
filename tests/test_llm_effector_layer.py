@@ -14,6 +14,7 @@ from ontocellia.framework import (
     MockLLMProvider,
     MorphogenField,
     Niche,
+    OpenAICompatibleProvider,
     ReceptorProfile,
     TaskMicroenvironment,
     TissueRuntime,
@@ -120,3 +121,101 @@ def test_tissue_cli_mock_llm_writes_action_intents(tmp_path: Path) -> None:
     trace = json.loads((output / "llm_trace.json").read_text(encoding="utf-8"))
     assert intents
     assert trace
+
+
+def test_tissue_cli_real_provider_requires_configured_api_key(tmp_path: Path, monkeypatch) -> None:
+    for name in ("DEEPSEEK_API_KEY", "MOONSHOT_API_KEY", "KIMI_API_KEY", "MINIMAX_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+
+    try:
+        main(
+            [
+                "tissue",
+                "--genome-spec",
+                "examples/framework/repo_repair_genome.yaml",
+                "--environment-spec",
+                "examples/framework/failing_tests_environment.yaml",
+                "--steps",
+                "1",
+                "--effector",
+                "deepseek",
+                "--output",
+                str(tmp_path / "deepseek_tissue"),
+            ]
+        )
+    except ValueError as error:
+        assert "DEEPSEEK_API_KEY" in str(error)
+    else:
+        raise AssertionError("expected CLI real provider mode to require an API key")
+
+
+def test_openai_compatible_provider_uses_deepseek_defaults_and_parses_intent() -> None:
+    captured: dict[str, object] = {}
+
+    def fake_transport(url: str, headers: dict[str, str], payload: dict[str, object], timeout: float) -> dict[str, object]:
+        captured["url"] = url
+        captured["headers"] = headers
+        captured["payload"] = payload
+        captured["timeout"] = timeout
+        return {
+            "model": payload["model"],
+            "choices": [
+                {
+                    "message": {
+                        "content": json.dumps(
+                            {
+                                "intent_type": "propose_patch",
+                                "target": "repair-niche",
+                                "rationale": "Patch tests after inspecting failure signals.",
+                                "required_interfaces": ["pytest", "workspace"],
+                                "confidence": 0.81,
+                                "payload": {"plan": ["inspect", "patch", "test"]},
+                            }
+                        )
+                    }
+                }
+            ],
+            "usage": {"prompt_tokens": 12, "completion_tokens": 16, "total_tokens": 28},
+        }
+
+    tissue = make_tissue()
+    prompt = CellPromptBuilder().build(tissue, tissue.cells[0])
+    provider = OpenAICompatibleProvider.from_name(
+        "deepseek",
+        env={"DEEPSEEK_API_KEY": "test-key"},
+        transport=fake_transport,
+    )
+
+    response = provider.complete(prompt)
+
+    assert captured["url"] == "https://api.deepseek.com/chat/completions"
+    headers = captured["headers"]
+    assert isinstance(headers, dict)
+    assert headers["Authorization"] == "Bearer test-key"
+    payload = captured["payload"]
+    assert isinstance(payload, dict)
+    assert payload["model"] == "deepseek-v4-flash"
+    assert response.parsed_intent.intent_type == "propose_patch"
+    assert response.parsed_intent.cell_id == tissue.cells[0].id
+    assert response.parsed_intent.expressed_gene_ids == tissue.cells[0].expressed_gene_ids
+    assert response.usage["total_tokens"] == 28
+
+
+def test_openai_compatible_provider_requires_api_key() -> None:
+    try:
+        OpenAICompatibleProvider.from_name("kimi", env={})
+    except ValueError as error:
+        assert "MOONSHOT_API_KEY" in str(error)
+        assert "KIMI_API_KEY" in str(error)
+    else:
+        raise AssertionError("expected missing Kimi API key to fail")
+
+
+def test_openai_compatible_provider_supports_kimi_and_minimax_defaults() -> None:
+    kimi = OpenAICompatibleProvider.from_name("kimi", env={"KIMI_API_KEY": "kimi-key"})
+    minimax = OpenAICompatibleProvider.from_name("minimax", env={"MINIMAX_API_KEY": "minimax-key"})
+
+    assert kimi.base_url == "https://api.moonshot.ai/v1"
+    assert kimi.model == "kimi-k2.6"
+    assert minimax.base_url == "https://api.minimax.io/v1"
+    assert minimax.model == "MiniMax-M2.7"
