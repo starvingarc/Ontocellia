@@ -105,7 +105,12 @@ class MockLLMProvider:
             required_interfaces=required,
             confidence=0.72,
             validation_hooks=list(context["validation_hooks"]),
-            payload={"encoded_responses": list(context["encoded_responses"])},
+            payload={
+                "encoded_responses": list(context["encoded_responses"]),
+                "message": f"{fate} cell reports {intent_type}.",
+                "matrix_tags": [fate, intent_type],
+                **({"handoff_to_fate": "reviewer"} if intent_type == "propose_patch" else {}),
+            },
         )
         return LLMResponse(
             content=intent.rationale,

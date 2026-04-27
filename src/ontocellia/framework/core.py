@@ -6,6 +6,7 @@ from random import Random
 from typing import Any
 
 from ontocellia.framework.cell import AgentCell, CellPosition, StemCellState
+from ontocellia.framework.communication import CommunicationPolicy, CommunicationRuntime, ExtracellularMatrix
 from ontocellia.framework.fate import FateLandscape
 from ontocellia.framework.genome import AgentGenome, Gene
 from ontocellia.framework.selection import OrganFeedbackSignal, OrganSelectionField, OrganSelectionReport, OrganSelectionTarget, OrganValidationResult
@@ -131,11 +132,14 @@ class TaskMicroenvironment:
     fate_landscape: FateLandscape = field(default_factory=FateLandscape.default)
     selection_targets: OrganSelectionTarget = field(default_factory=OrganSelectionTarget)
     organ_feedback: OrganFeedbackSignal | None = None
-    matrix: dict[str, Any] = field(default_factory=dict)
+    matrix: ExtracellularMatrix | dict[str, Any] = field(default_factory=ExtracellularMatrix)
+    communication_policy: CommunicationPolicy = field(default_factory=CommunicationPolicy)
 
     def __post_init__(self) -> None:
         if self.topology is None:
             self.topology = TissueTopology.from_niches(self.niches)
+        if isinstance(self.matrix, dict):
+            self.matrix = ExtracellularMatrix()
 
     def niche_by_id(self, niche_id: str) -> Niche:
         for niche in self.niches:
@@ -165,6 +169,7 @@ class TissueRuntime:
     next_cell_id: int = 0
     organ_selection_field: OrganSelectionField | None = field(default_factory=OrganSelectionField)
     last_organ_selection_report: OrganSelectionReport | None = None
+    communication_runtime: CommunicationRuntime | None = field(default_factory=CommunicationRuntime)
 
     @classmethod
     def seeded(
@@ -247,7 +252,9 @@ class TissueRuntime:
 
     def execute(self, effectors: Any | None = None) -> list[dict[str, Any]]:
         if effectors is not None:
-            return [intent.as_dict() for intent in effectors.emit_intents(self)]
+            actions = [intent.as_dict() for intent in effectors.emit_intents(self)]
+            self.communicate(actions)
+            return actions
         actions: list[dict[str, Any]] = []
         for cell in sorted(self.cells.values(), key=lambda item: item.id):
             if not cell.differentiated:
@@ -267,7 +274,25 @@ class TissueRuntime:
                     }
                     actions.append(action)
                     self.trace.record("effector_action", **action)
+        self.communicate(actions)
         return actions
+
+    def communicate(self, actions: list[dict[str, Any]] | None = None) -> dict[str, list[dict[str, Any]]]:
+        if (
+            self.communication_runtime is None
+            or not hasattr(self.environment, "communication_policy")
+            or not hasattr(self.environment, "matrix")
+        ):
+            return {"messages": [], "deliveries": [], "handoffs": []}
+        messages = self.communication_runtime.emit_from_actions(self, list(actions or []))
+        deliveries = self.communication_runtime.route(self, messages)
+        receipts = self.communication_runtime.resolve_handoffs(self)
+        self.environment.matrix.decay(self.tick_count)
+        return {
+            "messages": [message.as_dict() for message in messages],
+            "deliveries": [delivery.as_dict() for delivery in deliveries],
+            "handoffs": [receipt.as_dict() for receipt in receipts],
+        }
 
     def _refresh_niche_occupancy(self) -> None:
         for niche in self.environment.niches:

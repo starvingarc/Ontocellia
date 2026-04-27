@@ -6,6 +6,7 @@ from typing import Any
 import yaml
 
 from ontocellia.framework.cell import CellPosition
+from ontocellia.framework.communication import CommunicationPolicy, ExtracellularMatrix, MatrixRecord
 from ontocellia.framework.core import ExtracellularInterface, MorphogenField, MorphogenSource, Niche, TaskMicroenvironment
 from ontocellia.framework.fate import FateAttractor, FateLandscape
 from ontocellia.framework.genome import AgentGenome, EpigeneticMarks, Gene, RegulatoryElement
@@ -59,7 +60,8 @@ def load_task_microenvironment(path: str | Path) -> TaskMicroenvironment:
         topology=_topology(data.get("topology"), niches),
         fate_landscape=_fate_landscape(data.get("fate_landscape")),
         selection_targets=_selection_targets(data.get("organ_selection")),
-        matrix=dict(data.get("matrix", {})),
+        matrix=_matrix(data.get("matrix")),
+        communication_policy=_communication_policy(data.get("communication")),
     )
 
 
@@ -137,6 +139,39 @@ def _selection_targets(data: Any) -> OrganSelectionTarget:
         max_risk=float(data.get("max_risk", 0.4)),
         max_cost=float(data.get("max_cost", 1.0)),
     )
+
+
+def _communication_policy(data: Any) -> CommunicationPolicy:
+    if not isinstance(data, dict):
+        return CommunicationPolicy()
+    return CommunicationPolicy(
+        matrix_query_limit=int(data.get("matrix_query_limit", 5)),
+        default_ttl=int(data.get("default_ttl", 3)),
+        promote_confidence_threshold=float(data.get("promote_confidence_threshold", 0.6)),
+        allow_broadcast=bool(data.get("allow_broadcast", True)),
+        broadcast_limit=int(data.get("broadcast_limit", 8)),
+    )
+
+
+def _matrix(data: Any) -> ExtracellularMatrix:
+    if not isinstance(data, dict):
+        return ExtracellularMatrix()
+    records = [
+        MatrixRecord(
+            id=str(record.get("id", f"matrix-seed-{index}")),
+            source_cell_id=int(record.get("source_cell_id", 0)),
+            kind=str(record.get("kind", "observation")),
+            content=str(record.get("content", "")),
+            tags=[str(tag) for tag in record.get("tags", [])],
+            position=_position(record.get("position", {"node_id": ""})),
+            confidence=float(record.get("confidence", 0.5)),
+            created_tick=int(record.get("created_tick", 0)),
+            expires_tick=record.get("expires_tick"),
+            fate=str(record["fate"]) if "fate" in record else None,
+        )
+        for index, record in enumerate(data.get("records", []))
+    ]
+    return ExtracellularMatrix(records=records)
 
 
 def _epigenetic_marks(data: Any) -> EpigeneticMarks:

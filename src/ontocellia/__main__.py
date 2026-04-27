@@ -179,6 +179,9 @@ def run_tissue(args: argparse.Namespace) -> None:
         "fate_counts": tissue.fate_counts(),
         "niche_occupancy": tissue.niche_occupancy(),
         "organ_selection": tissue.last_organ_selection_report.as_dict() if tissue.last_organ_selection_report is not None else {},
+        "messages": sum(1 for event in tissue.trace.events if event["type"] == "message_emitted"),
+        "matrix_records": len(tissue.environment.matrix.records),
+        "handoffs": sum(1 for event in tissue.trace.events if event["type"] == "handoff_completed"),
         "actions": actions,
     }
     summary_path = args.output / "tissue_summary.json"
