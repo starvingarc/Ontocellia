@@ -80,6 +80,17 @@ python -m ontocellia tissue \
 
 This writes `tissue_summary.json` and `tissue_trace.json`.
 
+The framework tissue runner can also consume structured validation results as weak organ-selection feedback. It reads the file only; it does not execute validation hooks.
+
+```bash
+python -m ontocellia tissue \
+  --genome-spec examples/framework/repo_repair_genome.yaml \
+  --environment-spec examples/framework/failing_tests_environment.yaml \
+  --validation-result examples/framework/validation_failed.json \
+  --steps 4 \
+  --output artifacts/organ_selection_tissue
+```
+
 ## Induction And LLM Effectors
 
 `ontocellia induce` is the compile-time induction layer: it turns a natural language task into genome and microenvironment specs.

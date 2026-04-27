@@ -263,6 +263,14 @@ morphogens decay
 trace records tick, fate decisions, regeneration, and actions
 ```
 
+### Phase 5 Organ Selection Layer
+
+Organ selection is weak system-level feedback from validation, user approval, quality, cost, latency, and safety. In the framework implementation, this layer consumes structured validation results and tissue state, then emits bounded feedback signals. It does not execute shell commands, MCP calls, test commands, or LLM calls.
+
+The current `OrganSelectionField` computes coverage, diversity, validation score, risk, cost, and pass rate. It turns deficits into morphogens such as `selection_pressure`, `validation_pressure`, `risk_pressure`, `resource_pressure`, and `reward_signal`. It also produces fate/gene feedback maps so gene expression can be biased without introducing a central controller.
+
+Validation hooks remain gene metadata. A separate opt-in runner can later execute hooks and write `OrganValidationResult` records, but organ selection itself only consumes those records.
+
 ### Phase 2 Cell Layer Implementation
 
 The Cell Layer now uses graph topology as the primary position model. A cell position is a `CellPosition` with `node_id`, `region`, `neighbors`, and a three-dimensional `embedding`. The graph node carries the semantic tissue location, such as a repair niche, review boundary, repository subsystem, document section, or resource niche. The three-dimensional embedding is used for visualization and fallback distance estimation.
