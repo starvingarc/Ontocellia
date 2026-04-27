@@ -54,10 +54,13 @@ The first agent-framework layer lives in `ontocellia.framework`. It models a tas
 
 - `Gene`: lowest-level endogenous genomic unit
 - `AgentGenome`: heritable program shared by the tissue
-- `TaskMicroenvironment`: objective, morphogens, functional niches, and extracellular interfaces
+- `MorphogenField`: global signals plus local graph-positioned morphogen sources
+- `TissueTopology`: graph-first tissue position model with 3D embedding fallback
+- `FateLandscape`: inspectable fate attractors, thresholds, niche bias, and hysteresis
+- `TaskMicroenvironment`: objective, morphogens, topology, functional niches, and extracellular interfaces
 - `Niche`: positioned functional region such as a repair niche or review boundary
 - `ExtracellularInterface`: biological interface that can later be backed by MCP, shell tools, LLM calls, or local code
-- `TissueRuntime`: deterministic harness for development, regeneration, and effector action emission
+- `TissueRuntime`: deterministic harness for local sensing, graph migration, differentiation, regeneration, and effector action emission
 
 Try the minimal tissue example:
 

@@ -229,15 +229,39 @@ It contains:
 
 - `Gene`: the lowest-level endogenous unit with morphogen affinity, expression constraints, encoded response, and validation hooks
 - `AgentGenome`: a shared heritable program that selects expressed genes under morphogen pressure
-- `MorphogenField`: task and tissue signals used for induction
+- `MorphogenField`: task and tissue signals used for induction, including local graph-positioned morphogen sources
+- `TissueTopology`: graph-first tissue geometry with semantic nodes, regions, graph distance, and 3D embedding fallback
+- `FateLandscape`: fate attractors, thresholds, niche bias, competence, and hysteresis for inspectable fate decisions
 - `Niche`: a positioned functional region with required fate and demand
 - `ExtracellularInterface`: a biological interface boundary that can be implemented by MCP, shell commands, LLM calls, or local code
-- `TaskMicroenvironment`: objective, morphogens, niches, interfaces, and extracellular matrix
+- `TaskMicroenvironment`: objective, morphogens, topology, niches, interfaces, fate landscape, and extracellular matrix
 - `AgentCell`: a stem, progenitor, transit-amplifying, or differentiated cell-agent
-- `TissueRuntime`: deterministic development, niche filling, regeneration, position updates, and effector action emission
+- `TissueRuntime`: deterministic local sensing, niche filling, graph migration, regeneration, position updates, and effector action emission
 - `TissueTrace`: lineage and tissue events
 
 The implementation is framework-first. The direct API and YAML specs define an agent tissue; the older simulation and experiment runtime can be used as a reference substrate for dynamics, metrics, and ablation studies.
+
+### Phase 4 Developmental Field Layer
+
+The developmental field layer connects cell state to tissue-level self-organization. `MorphogenField` now supports both global task signals and local sources attached to graph positions. Cells sense local signal values through their `CellPosition`, so a repair niche, exploration front, or review boundary can release different pressures into nearby tissue regions.
+
+`TissueTopology` is the semantic position substrate. Nodes represent functional domains such as repository subsystems, test regions, task slots, memory niches, or tool/resource regions. Graph distance is preferred over embedding distance; the 3D embedding remains useful for visualization and fallback estimates.
+
+`FateLandscape` turns local morphogens into inspectable `FateDecision` records. Attractors such as repair, explorer, reviewer, builder, planner, memory, and quiescent combine morphogen scores with competence, niche bias, and hysteresis. Differentiation still fills explicit niches, but the trace now records why the local field favored a fate.
+
+Runtime development now follows this field-aware loop:
+
+```text
+refresh niche occupancy
+emit local damage / vacancy morphogens
+cell senses local morphogen field
+fate landscape produces a fate decision
+plastic cells fill niches
+cells migrate over tissue graph
+adhesion biases nearby compatible fates
+morphogens decay
+trace records tick, fate decisions, regeneration, and actions
+```
 
 ### Phase 2 Cell Layer Implementation
 

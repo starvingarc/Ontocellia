@@ -12,18 +12,83 @@ morphogens:
   repair_pressure: 0.7
   review_pressure: 0.55
 
+topology:
+  nodes:
+    - id: repair-niche
+      region: repo/tests
+      neighbors: [stem-reserve, review-boundary]
+      embedding: [10.0, 4.0, 0.0]
+    - id: exploration-front
+      region: repo/source
+      neighbors: [stem-reserve, review-boundary]
+      embedding: [2.0, 8.0, 0.0]
+    - id: review-boundary
+      region: repo/tests
+      neighbors: [repair-niche, exploration-front]
+      embedding: [7.0, 7.0, 0.0]
+    - id: stem-reserve
+      region: stem-reserve
+      neighbors: [repair-niche, exploration-front]
+      embedding: [6.0, 5.0, 0.0]
+
+morphogen_sources:
+  - id: failing-tests
+    signal: test_failure
+    amount: 0.9
+    position:
+      node_id: repair-niche
+      region: repo/tests
+    radius: 2.0
+  - id: incomplete-context
+    signal: ambiguity
+    amount: 0.6
+    position:
+      node_id: exploration-front
+      region: repo/source
+    radius: 2.0
+
+fate_landscape:
+  attractors:
+    - fate: repair
+      morphogens: [test_failure, repair_pressure, niche_vacancy, damage]
+      threshold: 0.4
+      commitment: 1.0
+      hysteresis: 0.2
+    - fate: explorer
+      morphogens: [ambiguity, missing_context, exploration_pressure]
+      threshold: 0.4
+      commitment: 1.0
+      hysteresis: 0.15
+    - fate: reviewer
+      morphogens: [review_pressure, risk, verification_pressure]
+      threshold: 0.35
+      commitment: 1.0
+      hysteresis: 0.2
+
 niches:
   - id: repair-niche
     required_fate: repair
-    position: [10.0, 4.0]
+    position:
+      node_id: repair-niche
+      region: repo/tests
+      neighbors: [stem-reserve, review-boundary]
+      embedding: [10.0, 4.0, 0.0]
     demand: 2
   - id: exploration-front
     required_fate: explorer
-    position: [2.0, 8.0]
+    position:
+      node_id: exploration-front
+      region: repo/source
+      neighbors: [stem-reserve, review-boundary]
+      embedding: [2.0, 8.0, 0.0]
     demand: 1
   - id: review-boundary
     required_fate: reviewer
-    position: [7.0, 7.0]
+    position:
+      node_id: review-boundary
+      region: repo/tests
+      neighbors: [repair-niche, exploration-front]
+      embedding: [7.0, 7.0, 0.0]
     demand: 1
 
 interfaces:

@@ -2,7 +2,9 @@
 
 from .core import (
     ExtracellularInterface,
+    MorphogenGradient,
     MorphogenField,
+    MorphogenSource,
     Niche,
     TaskMicroenvironment,
     TissueRuntime,
@@ -22,9 +24,11 @@ from .cell import (
     TransitAmplifyingCellState,
 )
 from .genome import AgentGenome, EpigeneticMarks, ExpressedGeneProgram, ExpressionContext, Gene, LineageMutation, RegulatoryElement
+from .fate import FateAttractor, FateDecision, FateLandscape
 from .induction import InductionDraft, InductionRequest, TemplateInductionCompiler
 from .llm import ActionIntent, CellPrompt, CellPromptBuilder, EffectorRuntime, LLMResponse, MockLLMProvider, OpenAICompatibleProvider
 from .specs import load_agent_genome, load_task_microenvironment
+from .topology import TissueTopology, TopologyNode
 
 __all__ = [
     "ActionIntent",
@@ -42,10 +46,15 @@ __all__ = [
     "ExtracellularInterface",
     "ExpressedGeneProgram",
     "ExpressionContext",
+    "FateAttractor",
+    "FateDecision",
+    "FateLandscape",
     "Gene",
     "LineageRecord",
     "LineageMutation",
     "MorphogenField",
+    "MorphogenGradient",
+    "MorphogenSource",
     "Niche",
     "ProgenitorCellState",
     "ReceptorProfile",
@@ -60,6 +69,8 @@ __all__ = [
     "TemplateInductionCompiler",
     "TissueRuntime",
     "TissueTrace",
+    "TissueTopology",
+    "TopologyNode",
     "TransitAmplifyingCellState",
     "load_agent_genome",
     "load_task_microenvironment",

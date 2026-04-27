@@ -6,7 +6,29 @@ from random import Random
 from typing import Any
 
 from ontocellia.framework.cell import AgentCell, CellPosition, StemCellState
+from ontocellia.framework.fate import FateLandscape
 from ontocellia.framework.genome import AgentGenome, Gene
+from ontocellia.framework.topology import TissueTopology
+
+
+@dataclass(slots=True)
+class MorphogenSource:
+    id: str
+    signal: str
+    amount: float
+    position: CellPosition | tuple[float, ...] | list[float] | dict[str, Any]
+    radius: float = 1.0
+
+    def __post_init__(self) -> None:
+        self.position = CellPosition.from_value(self.position)
+
+
+@dataclass(slots=True)
+class MorphogenGradient:
+    signal: str
+    source_id: str
+    position: CellPosition
+    amount: float
 
 
 @dataclass(slots=True)
@@ -14,6 +36,7 @@ class MorphogenField:
     """Task and tissue signals that induce gene expression."""
 
     signals: dict[str, float] = field(default_factory=dict)
+    sources: list[MorphogenSource] = field(default_factory=list)
 
     def signal(self, name: str) -> float:
         return float(self.signals.get(name, 0.0))
@@ -21,9 +44,46 @@ class MorphogenField:
     def emit(self, name: str, amount: float) -> None:
         self.signals[name] = max(0.0, self.signal(name) + amount)
 
+    def emit_at(
+        self,
+        name: str,
+        amount: float,
+        position: CellPosition | tuple[float, ...] | list[float] | dict[str, Any],
+        radius: float = 1.0,
+        source_id: str | None = None,
+    ) -> None:
+        self.sources.append(
+            MorphogenSource(
+                id=source_id or f"{name}-{len(self.sources)}",
+                signal=name,
+                amount=max(0.0, float(amount)),
+                position=position,
+                radius=max(0.0, float(radius)),
+            )
+        )
+
+    def local_signals(self, position: CellPosition | tuple[float, ...] | list[float] | dict[str, Any], topology: TissueTopology | None = None) -> dict[str, float]:
+        target = CellPosition.from_value(position)
+        signals = {str(name): float(value) for name, value in self.signals.items()}
+        for source in self.sources:
+            distance = _field_distance(source.position, target, topology)
+            if source.radius and distance > source.radius:
+                continue
+            signals[source.signal] = signals.get(source.signal, 0.0) + source.amount / (1.0 + distance)
+        return signals
+
+    def signal_at(self, name: str, position: CellPosition | tuple[float, ...] | list[float] | dict[str, Any], topology: TissueTopology | None = None) -> float:
+        return float(self.local_signals(position, topology).get(name, 0.0))
+
     def decay(self, rate: float = 0.92) -> None:
         for name, value in list(self.signals.items()):
             self.signals[name] = max(0.0, float(value) * rate)
+        decayed: list[MorphogenSource] = []
+        for source in self.sources:
+            source.amount = max(0.0, float(source.amount) * rate)
+            if source.amount >= 0.001:
+                decayed.append(source)
+        self.sources = decayed
 
 
 @dataclass(slots=True)
@@ -66,7 +126,13 @@ class TaskMicroenvironment:
     morphogens: MorphogenField = field(default_factory=MorphogenField)
     niches: list[Niche] = field(default_factory=list)
     interfaces: list[ExtracellularInterface] = field(default_factory=list)
+    topology: TissueTopology | None = None
+    fate_landscape: FateLandscape = field(default_factory=FateLandscape.default)
     matrix: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if self.topology is None:
+            self.topology = TissueTopology.from_niches(self.niches)
 
     def niche_by_id(self, niche_id: str) -> Niche:
         for niche in self.niches:
@@ -124,6 +190,9 @@ class TissueRuntime:
             rng=rng,
             next_cell_id=stem_cells,
         )
+        assert runtime.environment.topology is not None
+        for cell in runtime.cells.values():
+            runtime.environment.topology.ensure_node(cell.position)
         runtime.trace.record("seed", stem_cells=stem_cells)
         return runtime
 
@@ -151,12 +220,17 @@ class TissueRuntime:
 
     def clear_cell(self, cell_id: int, reason: str = "cleared") -> None:
         cell = self.cells.pop(cell_id)
+        signal_position = cell.position
         if cell.niche_id is not None:
             niche = self.environment.niche_by_id(cell.niche_id)
             niche.vacant_replacements.append(cell.id)
+            signal_position = niche.position
         self.environment.morphogens.emit("damage", 1.0)
         self.environment.morphogens.emit("niche_vacancy", 1.0)
         self.environment.morphogens.emit("repair_pressure", 0.6)
+        self.environment.morphogens.emit_at("damage", 1.0, signal_position, radius=2.0, source_id=f"damage-{cell.id}-{self.tick_count}")
+        self.environment.morphogens.emit_at("niche_vacancy", 1.0, signal_position, radius=2.0, source_id=f"vacancy-{cell.id}-{self.tick_count}")
+        self.environment.morphogens.emit_at("repair_pressure", 0.6, signal_position, radius=2.0, source_id=f"repair-{cell.id}-{self.tick_count}")
         self.trace.record(
             "apoptosis",
             cell_id=cell.id,
@@ -233,17 +307,41 @@ class TissueRuntime:
         ]
         if not candidates:
             return None
-        candidates.sort(key=lambda cell: (_graph_distance(cell.position, target), _stage_rank(str(cell.stage)), cell.id))
+        topology = _environment_topology(self.environment)
+        candidates.sort(
+            key=lambda cell: (
+                _field_distance(cell.position, target, topology),
+                -_gradient_strength(self.environment.morphogens, cell.position, topology),
+                -_nearby_adhesion_score(cell, self.cells.values(), topology),
+                _stage_rank(str(cell.stage)),
+                cell.id,
+            )
+        )
         return candidates[0]
 
     def _differentiate(self, cell: AgentCell, niche: Niche) -> AgentCell:
+        topology = _environment_topology(self.environment)
+        local_signals = self.environment.morphogens.local_signals(cell.position, topology)
+        decision = _environment_fate_landscape(self.environment).decide(cell, self.genome, local_signals, niche_bias=niche.required_fate)
         cell.position = _move_position_toward(cell.position, niche.position, fraction=0.85)
-        cell.commit_to_fate(niche.required_fate, niche.id, self.genome, self.environment.morphogens)
+        cell.commit_to_fate(niche.required_fate, niche.id, self.genome, local_signals)
         cell.position = CellPosition(
             node_id=niche.position.node_id,
             region=niche.position.region,
             neighbors=list(niche.position.neighbors),
             embedding=cell.position.embedding,
+        )
+        self.trace.record(
+            "fate_decision",
+            cell_id=cell.id,
+            niche_id=niche.id,
+            selected_fate=decision.fate,
+            committed_fate=niche.required_fate,
+            score=decision.score,
+            scores=decision.scores,
+            threshold=decision.threshold,
+            reason=decision.reason,
+            niche_bias=decision.niche_bias,
         )
         self.trace.record(
             "differentiation",
@@ -291,6 +389,9 @@ class TissueRuntime:
         )
         child = parent.spawn_child(self.next_cell_id, stage=stage, fate=fate, position=child_position)
         self.cells[child.id] = child
+        topology = _environment_topology(self.environment)
+        if topology is not None:
+            topology.ensure_node(child.position)
         self.next_cell_id += 1
         self.trace.record("division", parent_cell_id=parent.id, child_cell_id=child.id, child_stage=stage, fate=fate)
         return child
@@ -316,6 +417,17 @@ class TissueRuntime:
             if cell.niche_id is None:
                 continue
             niche = self.environment.niche_by_id(cell.niche_id)
+            topology = _environment_topology(self.environment)
+            if topology is not None and cell.position.node_id != niche.position.node_id:
+                next_position = topology.nearest_step_toward(cell.position, niche.position)
+                if next_position.node_id != cell.position.node_id:
+                    cell.position = CellPosition(
+                        node_id=next_position.node_id,
+                        region=next_position.region,
+                        neighbors=list(next_position.neighbors),
+                        embedding=_move_position_toward(cell.position, next_position, fraction=1.0).embedding,
+                    )
+                    continue
             cell.position = _move_position_toward(cell.position, niche.position, fraction=0.35)
 
     def _age_cells(self) -> None:
@@ -327,6 +439,36 @@ class TissueRuntime:
 
 def _embedding_distance(left: tuple[float, float, float], right: tuple[float, float, float]) -> float:
     return hypot(hypot(left[0] - right[0], left[1] - right[1]), left[2] - right[2])
+
+
+def _environment_topology(environment: Any) -> TissueTopology | None:
+    return getattr(environment, "topology", None)
+
+
+def _environment_fate_landscape(environment: Any) -> FateLandscape:
+    return getattr(environment, "fate_landscape", FateLandscape.default())
+
+
+def _field_distance(left: CellPosition, right: CellPosition, topology: TissueTopology | None) -> float:
+    if topology is not None:
+        return topology.distance(left, right)
+    return _graph_distance(left, right)
+
+
+def _gradient_strength(morphogens: MorphogenField, position: CellPosition, topology: TissueTopology | None) -> float:
+    return sum(morphogens.local_signals(position, topology).values())
+
+
+def _nearby_adhesion_score(cell: AgentCell, cells: Any, topology: TissueTopology | None) -> float:
+    score = 0.0
+    for other in cells:
+        if other.id == cell.id or not other.alive:
+            continue
+        distance = _field_distance(cell.position, other.position, topology)
+        if distance > 1.0:
+            continue
+        score += cell.adhesion_score(other.fate)
+    return score
 
 
 def _graph_distance(left: CellPosition, right: CellPosition) -> float:
