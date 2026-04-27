@@ -1,0 +1,42 @@
+# Framework Overview
+
+Ontocellia's framework layer models a task-induced agent tissue. It is separate from the older reference simulation runtime, but both share the same developmental vocabulary.
+
+## Layers
+
+- `AgentGenome`: shared heritable program made of genes, regulatory elements, epigenetic defaults, and mutation history.
+- `AgentCell`: autonomous cell-agent with stage, fate, position, lineage, receptor profile, adhesion profile, competence, energy, stress, and local history.
+- `MorphogenField`: global and local task signals that bias expression, migration, regeneration, and selection.
+- `TissueTopology`: graph-first tissue position model with semantic nodes, regions, neighbors, and 3D embedding fallback.
+- `FateLandscape`: fate attractors, thresholds, niche bias, competence, and hysteresis.
+- `TaskMicroenvironment`: objective, morphogens, topology, niches, extracellular interfaces, organ selection targets, communication policy, and shared matrix.
+- `TissueRuntime`: deterministic harness for development, regeneration, effectors, communication, and trace recording.
+
+## Runtime Flow
+
+```text
+seed stem cells
+refresh niche occupancy
+resolve vacancies and regeneration
+fill open niches
+differentiate through local morphogens and fate landscape
+move cells over tissue topology
+apply organ selection feedback
+execute rule or LLM effectors
+route messages, handoffs, and matrix deposits
+record trace and summary artifacts
+```
+
+## Organ Selection
+
+The organ selection layer consumes structured validation results and tissue state. It emits bounded feedback signals such as `selection_pressure`, `validation_pressure`, `risk_pressure`, `resource_pressure`, and `reward_signal`.
+
+Validation hooks remain metadata. Ontocellia does not execute shell commands, MCP calls, tests, or LLM calls through organ selection.
+
+## Communication
+
+Cells communicate with `TissueMessage` objects and durable `MatrixRecord` entries. Direct, local, fate-scoped, and broadcast messages support short-term coordination. The shared extracellular matrix stores evidence, memory, hypotheses, validation notes, and handoff context.
+
+## Effectors
+
+Effectors translate expressed gene programs into structured actions. The default rule-based path is deterministic. The mock LLM provider is deterministic for tests. Real providers are optional and use OpenAI-compatible chat completion APIs.

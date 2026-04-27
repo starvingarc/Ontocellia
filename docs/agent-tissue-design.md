@@ -234,9 +234,12 @@ It contains:
 - `FateLandscape`: fate attractors, thresholds, niche bias, competence, and hysteresis for inspectable fate decisions
 - `Niche`: a positioned functional region with required fate and demand
 - `ExtracellularInterface`: a biological interface boundary that can be implemented by MCP, shell commands, LLM calls, or local code
-- `TaskMicroenvironment`: objective, morphogens, topology, niches, interfaces, fate landscape, and extracellular matrix
+- `TaskMicroenvironment`: objective, morphogens, topology, niches, interfaces, fate landscape, organ-selection targets, communication policy, and extracellular matrix
 - `AgentCell`: a stem, progenitor, transit-amplifying, or differentiated cell-agent
-- `TissueRuntime`: deterministic local sensing, niche filling, graph migration, regeneration, position updates, and effector action emission
+- `OrganSelectionField`: weak global feedback from structured validation, cost, risk, coverage, and diversity signals
+- `CommunicationRuntime`: local, fate-scoped, direct, and broadcast messaging with handoff and matrix deposition
+- `ExtracellularMatrix`: shared evidence and memory substrate for observations, hypotheses, validation notes, and handoff context
+- `TissueRuntime`: deterministic local sensing, niche filling, graph migration, regeneration, position updates, organ feedback, effector action emission, and communication
 - `TissueTrace`: lineage and tissue events
 
 The implementation is framework-first. The direct API and YAML specs define an agent tissue; the older simulation and experiment runtime can be used as a reference substrate for dynamics, metrics, and ablation studies.
@@ -271,6 +274,26 @@ The current `OrganSelectionField` computes coverage, diversity, validation score
 
 Validation hooks remain gene metadata. A separate opt-in runner can later execute hooks and write `OrganValidationResult` records, but organ selection itself only consumes those records.
 
+### Phase 6 Communication, Handoff, and Matrix Memory
+
+The communication layer gives cells a local coordination substrate without turning the tissue into a centrally planned workflow. Cells emit structured `TissueMessage` objects from expressed genes, rule-based actions, or LLM `ActionIntent` payloads. Messages can be direct, local, fate-scoped, or broadcast.
+
+Local routing follows tissue topology. A local message reaches cells on the same graph node, adjacent graph nodes, or the same region. Fate-scoped routing targets differentiated cells with the requested fate, such as repair handing work to reviewer. Broadcast routing is capped by policy so shared signals stay bounded.
+
+The extracellular matrix is the durable shared memory substrate. High-confidence observations and explicit memory intents become `MatrixRecord` entries with tags, position, confidence, source cell, and optional expiry. Cells retain local lineage history, while the matrix carries tissue-level evidence, hypotheses, validation notes, and handoff context.
+
+Handoff is represented as a biological coordination event. A cell can request transfer to another fate, the runtime records `handoff_requested`, and a recipient cell produces a traceable `handoff_completed` receipt. This makes repair-to-review, explorer-to-memory, and planner-to-builder transitions inspectable without executing external tools.
+
+The Phase6 runtime records communication as trace events:
+
+- `message_emitted`
+- `message_delivered`
+- `matrix_deposit`
+- `handoff_requested`
+- `handoff_completed`
+
+The tissue summary exposes message, matrix, and handoff counts. MCP, shell, and validation execution remain separate extracellular interface work for later phases.
+
 ### Phase 2 Cell Layer Implementation
 
 The Cell Layer now uses graph topology as the primary position model. A cell position is a `CellPosition` with `node_id`, `region`, `neighbors`, and a three-dimensional `embedding`. The graph node carries the semantic tissue location, such as a repair niche, review boundary, repository subsystem, document section, or resource niche. The three-dimensional embedding is used for visualization and fallback distance estimation.
@@ -302,28 +325,7 @@ The Induction Compiler is a compile-time design assistant. It translates a user 
 
 The Cell Effector Layer is runtime cellular translation machinery. It consumes expressed gene programs, cell state, local microenvironment, and receptor-allowed interfaces, then emits a structured `ActionIntent`. It does not mutate genome, call tools directly, or bypass membrane/receptor gates.
 
-Real LLM providers are implemented as provider adapters behind the same cell effector contract. The deterministic `mock-llm` provider is used for tests and local reproducibility. Real providers are selected explicitly through the tissue CLI:
-
-```bash
-python -m ontocellia tissue \
-  --genome-spec artifacts/induced/genome.yaml \
-  --environment-spec artifacts/induced/environment.yaml \
-  --effector deepseek \
-  --llm-model deepseek-v4-flash \
-  --output artifacts/deepseek_tissue
-```
-
-The current real adapters target OpenAI-compatible chat completion APIs:
-
-| Provider | API key environment variable | Default base URL | Default model |
-| --- | --- | --- | --- |
-| `deepseek` | `DEEPSEEK_API_KEY` | `https://api.deepseek.com` | `deepseek-v4-flash` |
-| `kimi` | `MOONSHOT_API_KEY` or `KIMI_API_KEY` | `https://api.moonshot.ai/v1` | `kimi-k2.6` |
-| `minimax` | `MINIMAX_API_KEY` | `https://api.minimax.io/v1` | `MiniMax-M2.7` |
-
-The provider receives a `CellPrompt` and must return an `ActionIntent` JSON object. The effector runtime records prompt context, provider name, model, parsed intent, and token usage into `llm_trace.json`. API keys stay in environment variables and are not persisted in trace artifacts.
-
-MiniMax token-plan keys may be bound to a regional host. The runtime keeps `--llm-base-url` explicit so a local deployment can choose the matching endpoint, for example `https://api.minimax.chat/v1`.
+Real LLM providers are implemented as provider adapters behind the same cell effector contract. The deterministic `mock-llm` provider is used for tests and local reproducibility. A provider receives a `CellPrompt` and must return an `ActionIntent` JSON object. The effector runtime records prompt context, provider name, model, parsed intent, and token usage into `llm_trace.json`. Provider setup and command examples live in the usage guide.
 
 ## 6. Genes as the Lowest-Level Unit
 
@@ -741,7 +743,7 @@ LLMs enter as one kind of cell execution substrate. The developmental harness re
 - Should a tissue have one shared memory substrate, local cell memories, or both?
 - How much global visibility should organ selection have before the system stops being decentralized?
 - Should fate commitment be explicit and inspectable, or implicit in prompt/tool selection?
-- Should cells communicate through direct messages, shared extracellular matrix, or both?
+- How much information should be promoted from transient messages into durable extracellular matrix records?
 - What is the minimal first tissue that proves the framework: repo repair, research synthesis, or long-running project maintenance?
 - What is the right limit on simultaneous gene expression before control signal becomes diluted?
 - How should external experience be assimilated into the genome while preserving gene as the lowest-level endogenous unit?

@@ -1,0 +1,124 @@
+# Usage Guide
+
+This guide covers the current command-line workflows. Commands assume the `ontocellia` conda environment is active.
+
+## Install
+
+```bash
+conda env create -f environment.yml
+conda activate ontocellia
+```
+
+## Run A Framework Tissue
+
+```bash
+python -m ontocellia tissue \
+  --genome-spec examples/framework/repo_repair_genome.yaml \
+  --environment-spec examples/framework/failing_tests_environment.yaml \
+  --steps 4 \
+  --output artifacts/repo_repair_tissue
+```
+
+Outputs:
+
+- `tissue_summary.json`
+- `tissue_trace.json`
+
+## Induce Specs From A Task
+
+```bash
+python -m ontocellia induce \
+  --task "Fix failing tests while preserving behavior" \
+  --domain repo_repair \
+  --output artifacts/induced
+```
+
+Run the induced tissue:
+
+```bash
+python -m ontocellia tissue \
+  --genome-spec artifacts/induced/genome.yaml \
+  --environment-spec artifacts/induced/environment.yaml \
+  --effector mock-llm \
+  --output artifacts/induced_tissue
+```
+
+## Use Organ Selection Results
+
+Organ selection consumes structured validation results. It does not execute validation hooks.
+
+```bash
+python -m ontocellia tissue \
+  --genome-spec examples/framework/repo_repair_genome.yaml \
+  --environment-spec examples/framework/failing_tests_environment.yaml \
+  --validation-result examples/framework/validation_failed.json \
+  --steps 4 \
+  --output artifacts/organ_selection_tissue
+```
+
+## LLM Effectors
+
+Mock LLM mode is deterministic:
+
+```bash
+python -m ontocellia tissue \
+  --genome-spec examples/framework/repo_repair_genome.yaml \
+  --environment-spec examples/framework/failing_tests_environment.yaml \
+  --effector mock-llm \
+  --output artifacts/mock_llm_tissue
+```
+
+Real providers are optional. API keys are read from environment variables and are not written into trace artifacts.
+
+| Provider | Environment variable | Default base URL |
+| --- | --- | --- |
+| `deepseek` | `DEEPSEEK_API_KEY` | `https://api.deepseek.com` |
+| `kimi` | `MOONSHOT_API_KEY` or `KIMI_API_KEY` | `https://api.moonshot.ai/v1` |
+| `minimax` | `MINIMAX_API_KEY` | `https://api.minimax.io/v1` |
+
+MiniMax token-plan keys may require a regional host:
+
+```bash
+python -m ontocellia tissue \
+  --genome-spec examples/framework/repo_repair_genome.yaml \
+  --environment-spec examples/framework/failing_tests_environment.yaml \
+  --effector minimax \
+  --llm-base-url https://api.minimax.chat/v1 \
+  --output artifacts/minimax_tissue
+```
+
+Live provider tests are opt-in:
+
+```bash
+set -a
+source .env.local
+set +a
+ONTOCELLIA_LIVE_LLM=1 conda run -n ontocellia python -m pytest -q tests/test_llm_live_e2e.py
+```
+
+## Experiments
+
+```bash
+python -m ontocellia experiment \
+  --experiment-spec examples/experiments/contact_ablation.yaml \
+  --output artifacts/contact_ablation
+```
+
+Experiments write per-variant run directories plus comparison artifacts.
+
+## Validation And Schema Docs
+
+```bash
+python -m ontocellia validate \
+  --genome-spec examples/specs/minimal_genome.yaml \
+  --environment-spec examples/specs/minimal_environment.yaml
+
+python -m ontocellia schema-docs --output docs/schema
+```
+
+## Legacy Reference Runtime
+
+```bash
+python -m ontocellia run --steps 20 --output artifacts/demo
+python -m ontocellia --steps 20 --output artifacts/legacy_demo
+```
