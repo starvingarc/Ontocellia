@@ -40,6 +40,7 @@ from .llm import ActionIntent, CellPrompt, CellPromptBuilder, EffectorRuntime, L
 from .selection import OrganFeedbackSignal, OrganSelectionField, OrganSelectionReport, OrganSelectionTarget, OrganValidationResult
 from .specs import load_agent_genome, load_task_microenvironment
 from .topology import TissueTopology, TopologyNode
+from .validation import ValidationHookPolicy, ValidationHookRequest, ValidationHookRunner
 
 __all__ = [
     "ActionIntent",
@@ -96,6 +97,9 @@ __all__ = [
     "TissueMessage",
     "TopologyNode",
     "TransitAmplifyingCellState",
+    "ValidationHookPolicy",
+    "ValidationHookRequest",
+    "ValidationHookRunner",
     "load_agent_genome",
     "load_task_microenvironment",
 ]

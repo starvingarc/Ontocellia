@@ -15,6 +15,9 @@ from ontocellia.framework import (
     OrganValidationResult,
     TemplateInductionCompiler,
     TissueRuntime,
+    ValidationHookPolicy,
+    ValidationHookRequest,
+    ValidationHookRunner,
     load_agent_genome,
     load_task_microenvironment,
 )
@@ -70,6 +73,9 @@ def build_parser() -> argparse.ArgumentParser:
     tissue_parser.add_argument("--llm-model")
     tissue_parser.add_argument("--llm-base-url")
     tissue_parser.add_argument("--validation-result", type=Path)
+    tissue_parser.add_argument("--run-validation-hooks", action="store_true")
+    tissue_parser.add_argument("--allow-validation-hook", action="append", default=[])
+    tissue_parser.add_argument("--validation-timeout", type=float, default=60.0)
     tissue_parser.add_argument("--output", type=Path, default=Path("artifacts/tissue"))
 
     induce_parser = subparsers.add_parser("induce", help="Compile a natural language task into agent tissue specs.")
@@ -161,7 +167,7 @@ def run_schema_docs(args: argparse.Namespace) -> None:
 def run_tissue(args: argparse.Namespace) -> None:
     genome = load_agent_genome(args.genome_spec)
     environment = load_task_microenvironment(args.environment_spec)
-    validation_results = _load_validation_results(args.validation_result)
+    validation_results = _load_validation_results(args.validation_result) or []
     tissue = TissueRuntime.seeded(genome=genome, environment=environment, stem_cells=args.stem_cells, seed=args.seed)
     tissue.develop(ticks=args.steps, validation_results=validation_results)
     provider = None
@@ -171,6 +177,19 @@ def run_tissue(args: argparse.Namespace) -> None:
         provider = OpenAICompatibleProvider.from_name(args.effector, model=args.llm_model, base_url=args.llm_base_url)
     effectors = EffectorRuntime(provider) if provider is not None else None
     actions = tissue.execute(effectors=effectors)
+    runner_results: list[OrganValidationResult] = []
+    if args.run_validation_hooks:
+        requests = _collect_validation_hook_requests(genome, actions)
+        runner_results = ValidationHookRunner().run(
+            requests,
+            ValidationHookPolicy(
+                allowed_commands=[str(command) for command in args.allow_validation_hook],
+                timeout_seconds=float(args.validation_timeout),
+            ),
+            trace=tissue.trace,
+        )
+        validation_results = [*validation_results, *runner_results]
+        tissue.develop(ticks=1, validation_results=validation_results)
     args.output.mkdir(parents=True, exist_ok=True)
     summary = {
         "objective": environment.objective,
@@ -179,6 +198,7 @@ def run_tissue(args: argparse.Namespace) -> None:
         "fate_counts": tissue.fate_counts(),
         "niche_occupancy": tissue.niche_occupancy(),
         "organ_selection": tissue.last_organ_selection_report.as_dict() if tissue.last_organ_selection_report is not None else {},
+        "validation_results": len(validation_results),
         "messages": sum(1 for event in tissue.trace.events if event["type"] == "message_emitted"),
         "matrix_records": len(tissue.environment.matrix.records),
         "handoffs": sum(1 for event in tissue.trace.events if event["type"] == "handoff_completed"),
@@ -188,6 +208,11 @@ def run_tissue(args: argparse.Namespace) -> None:
     trace_path = args.output / "tissue_trace.json"
     summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True), encoding="utf-8")
     trace_path.write_text(json.dumps(tissue.trace.events, indent=2, sort_keys=True), encoding="utf-8")
+    if args.run_validation_hooks:
+        (args.output / "validation_results.json").write_text(
+            json.dumps([result.as_dict() for result in validation_results], indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
     if provider is not None:
         (args.output / "action_intents.json").write_text(json.dumps(actions, indent=2, sort_keys=True), encoding="utf-8")
         llm_trace = [event for event in tissue.trace.events if event["type"] == "llm_effector"]
@@ -224,6 +249,33 @@ def _load_validation_results(path: Path | None) -> list[OrganValidationResult] |
         )
         for item in data
     ]
+
+
+def _collect_validation_hook_requests(genome: object, actions: list[dict[str, object]]) -> list[ValidationHookRequest]:
+    requests: list[ValidationHookRequest] = []
+    for gene in getattr(genome, "genes", []):
+        for hook in getattr(gene, "validation_hooks", []):
+            requests.append(
+                ValidationHookRequest(
+                    name=str(getattr(gene, "id", hook)),
+                    command=str(hook),
+                    source_gene_id=str(getattr(gene, "id", "")),
+                )
+            )
+    for index, action in enumerate(actions):
+        hooks = action.get("validation_hooks", [])
+        if not isinstance(hooks, list):
+            continue
+        for hook in hooks:
+            requests.append(
+                ValidationHookRequest(
+                    name=str(action.get("intent_type") or action.get("gene_id") or f"action-{index}"),
+                    command=str(hook),
+                    source_action_id=str(action.get("intent_type") or action.get("gene_id") or f"action-{index}"),
+                    source_cell_id=int(action["cell_id"]) if "cell_id" in action else None,
+                )
+            )
+    return requests
 
 
 def main(argv: list[str] | None = None) -> None:

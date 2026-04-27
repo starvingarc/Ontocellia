@@ -23,6 +23,7 @@ differentiate through local morphogens and fate landscape
 move cells over tissue topology
 apply organ selection feedback
 execute rule or LLM effectors
+optionally run explicitly allowlisted validation hooks
 route messages, handoffs, and matrix deposits
 record trace and summary artifacts
 ```
@@ -31,7 +32,7 @@ record trace and summary artifacts
 
 The organ selection layer consumes structured validation results and tissue state. It emits bounded feedback signals such as `selection_pressure`, `validation_pressure`, `risk_pressure`, `resource_pressure`, and `reward_signal`.
 
-Validation hooks remain metadata. Ontocellia does not execute shell commands, MCP calls, tests, or LLM calls through organ selection.
+Validation hooks remain metadata until the opt-in Validation Hook Runner is enabled. The runner executes only exact allowlisted commands, converts outcomes into `OrganValidationResult` records, and feeds those records back into organ selection.
 
 ## Communication
 

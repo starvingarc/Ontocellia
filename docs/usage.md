@@ -45,7 +45,7 @@ python -m ontocellia tissue \
 
 ## Use Organ Selection Results
 
-Organ selection consumes structured validation results. It does not execute validation hooks.
+Organ selection consumes structured validation results. By default, validation hooks remain metadata and are not executed.
 
 ```bash
 python -m ontocellia tissue \
@@ -55,6 +55,20 @@ python -m ontocellia tissue \
   --steps 4 \
   --output artifacts/organ_selection_tissue
 ```
+
+To execute hooks, use the opt-in Validation Hook Runner and explicitly allow each command:
+
+```bash
+python -m ontocellia tissue \
+  --genome-spec examples/framework/repo_repair_genome.yaml \
+  --environment-spec examples/framework/failing_tests_environment.yaml \
+  --steps 4 \
+  --run-validation-hooks \
+  --allow-validation-hook "python -m pytest -q" \
+  --output artifacts/validation_runner_tissue
+```
+
+The runner uses exact command allowlisting and does not execute through a shell. It writes `validation_results.json`, records hook events in `tissue_trace.json`, and feeds the resulting `OrganValidationResult` records back into organ selection.
 
 ## LLM Effectors
 
