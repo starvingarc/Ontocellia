@@ -8,6 +8,7 @@ from typing import Any
 from ontocellia.framework.cell import AgentCell, CellPosition, StemCellState
 from ontocellia.framework.fate import FateLandscape
 from ontocellia.framework.genome import AgentGenome, Gene
+from ontocellia.framework.selection import OrganFeedbackSignal, OrganSelectionField, OrganSelectionReport, OrganSelectionTarget, OrganValidationResult
 from ontocellia.framework.topology import TissueTopology
 
 
@@ -128,6 +129,8 @@ class TaskMicroenvironment:
     interfaces: list[ExtracellularInterface] = field(default_factory=list)
     topology: TissueTopology | None = None
     fate_landscape: FateLandscape = field(default_factory=FateLandscape.default)
+    selection_targets: OrganSelectionTarget = field(default_factory=OrganSelectionTarget)
+    organ_feedback: OrganFeedbackSignal | None = None
     matrix: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -160,6 +163,8 @@ class TissueRuntime:
     rng: Random = field(default_factory=Random)
     tick_count: int = 0
     next_cell_id: int = 0
+    organ_selection_field: OrganSelectionField | None = field(default_factory=OrganSelectionField)
+    last_organ_selection_report: OrganSelectionReport | None = None
 
     @classmethod
     def seeded(
@@ -196,7 +201,7 @@ class TissueRuntime:
         runtime.trace.record("seed", stem_cells=stem_cells)
         return runtime
 
-    def develop(self, ticks: int = 1) -> None:
+    def develop(self, ticks: int = 1, validation_results: list[OrganValidationResult] | None = None) -> None:
         for _ in range(ticks):
             self.tick_count += 1
             self._refresh_niche_occupancy()
@@ -204,6 +209,7 @@ class TissueRuntime:
             self._fill_open_niches()
             self._update_cell_positions()
             self._age_cells()
+            self._apply_organ_selection(validation_results)
             self.environment.morphogens.decay()
             self.trace.record("tick", tick=self.tick_count, fate_counts=self.fate_counts())
 
@@ -324,7 +330,7 @@ class TissueRuntime:
         local_signals = self.environment.morphogens.local_signals(cell.position, topology)
         decision = _environment_fate_landscape(self.environment).decide(cell, self.genome, local_signals, niche_bias=niche.required_fate)
         cell.position = _move_position_toward(cell.position, niche.position, fraction=0.85)
-        cell.commit_to_fate(niche.required_fate, niche.id, self.genome, local_signals)
+        cell.commit_to_fate(niche.required_fate, niche.id, self.genome, local_signals, organ_feedback=_organ_feedback_for_expression(self.environment))
         cell.position = CellPosition(
             node_id=niche.position.node_id,
             region=niche.position.region,
@@ -436,6 +442,19 @@ class TissueRuntime:
             if cell.stage == "stem" and cell.niche_id is None:
                 cell.fate = "stem"
 
+    def _apply_organ_selection(self, validation_results: list[OrganValidationResult] | None = None) -> None:
+        if self.organ_selection_field is None:
+            return
+        report = self.organ_selection_field.evaluate(self, validation_results)
+        self.last_organ_selection_report = report
+        self.environment.organ_feedback = report.feedback
+        self.environment.morphogens.emit("selection_pressure", report.feedback.selection_pressure)
+        self.environment.morphogens.emit("validation_pressure", report.feedback.validation_pressure)
+        self.environment.morphogens.emit("risk_pressure", report.feedback.risk_pressure)
+        self.environment.morphogens.emit("resource_pressure", report.feedback.resource_pressure)
+        self.environment.morphogens.emit("reward_signal", report.feedback.reward_signal)
+        self.trace.record("organ_selection", tick=self.tick_count, **report.as_dict())
+
 
 def _embedding_distance(left: tuple[float, float, float], right: tuple[float, float, float]) -> float:
     return hypot(hypot(left[0] - right[0], left[1] - right[1]), left[2] - right[2])
@@ -447,6 +466,15 @@ def _environment_topology(environment: Any) -> TissueTopology | None:
 
 def _environment_fate_landscape(environment: Any) -> FateLandscape:
     return getattr(environment, "fate_landscape", FateLandscape.default())
+
+
+def _organ_feedback_for_expression(environment: Any) -> dict[str, float]:
+    feedback = getattr(environment, "organ_feedback", None)
+    if feedback is None:
+        return {}
+    by_fate = dict(getattr(feedback, "by_fate", {}))
+    by_gene = dict(getattr(feedback, "by_gene", {}))
+    return {**by_fate, **by_gene}
 
 
 def _field_distance(left: CellPosition, right: CellPosition, topology: TissueTopology | None) -> float:

@@ -9,6 +9,7 @@ from ontocellia.framework.cell import CellPosition
 from ontocellia.framework.core import ExtracellularInterface, MorphogenField, MorphogenSource, Niche, TaskMicroenvironment
 from ontocellia.framework.fate import FateAttractor, FateLandscape
 from ontocellia.framework.genome import AgentGenome, EpigeneticMarks, Gene, RegulatoryElement
+from ontocellia.framework.selection import OrganSelectionTarget
 from ontocellia.framework.topology import TissueTopology, TopologyNode
 
 
@@ -57,6 +58,7 @@ def load_task_microenvironment(path: str | Path) -> TaskMicroenvironment:
         interfaces=interfaces,
         topology=_topology(data.get("topology"), niches),
         fate_landscape=_fate_landscape(data.get("fate_landscape")),
+        selection_targets=_selection_targets(data.get("organ_selection")),
         matrix=dict(data.get("matrix", {})),
     )
 
@@ -123,6 +125,18 @@ def _fate_landscape(data: Any) -> FateLandscape:
         for attractor in data.get("attractors", [])
     ]
     return FateLandscape(attractors=attractors) if attractors else FateLandscape.default()
+
+
+def _selection_targets(data: Any) -> OrganSelectionTarget:
+    if not isinstance(data, dict):
+        return OrganSelectionTarget()
+    return OrganSelectionTarget(
+        min_coverage=float(data.get("min_coverage", 0.5)),
+        min_diversity=float(data.get("min_diversity", 0.3)),
+        min_validation_score=float(data.get("min_validation_score", 0.7)),
+        max_risk=float(data.get("max_risk", 0.4)),
+        max_cost=float(data.get("max_cost", 1.0)),
+    )
 
 
 def _epigenetic_marks(data: Any) -> EpigeneticMarks:

@@ -1,0 +1,12 @@
+[
+  {
+    "name": "pytest",
+    "passed": false,
+    "score": 0.2,
+    "target": "repo",
+    "evidence": "3 failing tests",
+    "cost": 0.1,
+    "risk": 0.3,
+    "latency": 1.2
+  }
+]

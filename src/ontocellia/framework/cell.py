@@ -163,12 +163,19 @@ class AgentCell:
             and regeneration_pressure >= 1.0 + (self.stage_state.fate_lock * 0.5)
         )
 
-    def commit_to_fate(self, fate: str, niche_id: str, genome: AgentGenome, morphogens: dict[str, float] | Any) -> "AgentCell":
+    def commit_to_fate(
+        self,
+        fate: str,
+        niche_id: str,
+        genome: AgentGenome,
+        morphogens: dict[str, float] | Any,
+        organ_feedback: dict[str, float] | None = None,
+    ) -> "AgentCell":
         self.stage = "differentiated"
         self.fate = fate
         self.niche_id = niche_id
         self.stage_state = DifferentiatedCellState(fate_lock=0.6, reprogrammable=True)
-        programs = genome.express(self.expression_context(morphogens))
+        programs = genome.express(self.expression_context(morphogens, organ_feedback=organ_feedback))
         self.expressed_gene_ids = [program.gene.id for program in programs if program.fate_bias == fate]
         self.position = CellPosition(
             node_id=niche_id,

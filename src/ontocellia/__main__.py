@@ -12,6 +12,7 @@ from ontocellia.framework import (
     InductionRequest,
     MockLLMProvider,
     OpenAICompatibleProvider,
+    OrganValidationResult,
     TemplateInductionCompiler,
     TissueRuntime,
     load_agent_genome,
@@ -68,6 +69,7 @@ def build_parser() -> argparse.ArgumentParser:
     tissue_parser.add_argument("--effector", choices=["rule", "mock-llm", "deepseek", "kimi", "minimax"], default="rule")
     tissue_parser.add_argument("--llm-model")
     tissue_parser.add_argument("--llm-base-url")
+    tissue_parser.add_argument("--validation-result", type=Path)
     tissue_parser.add_argument("--output", type=Path, default=Path("artifacts/tissue"))
 
     induce_parser = subparsers.add_parser("induce", help="Compile a natural language task into agent tissue specs.")
@@ -159,8 +161,9 @@ def run_schema_docs(args: argparse.Namespace) -> None:
 def run_tissue(args: argparse.Namespace) -> None:
     genome = load_agent_genome(args.genome_spec)
     environment = load_task_microenvironment(args.environment_spec)
+    validation_results = _load_validation_results(args.validation_result)
     tissue = TissueRuntime.seeded(genome=genome, environment=environment, stem_cells=args.stem_cells, seed=args.seed)
-    tissue.develop(ticks=args.steps)
+    tissue.develop(ticks=args.steps, validation_results=validation_results)
     provider = None
     if args.effector == "mock-llm":
         provider = MockLLMProvider()
@@ -175,6 +178,7 @@ def run_tissue(args: argparse.Namespace) -> None:
         "population": len(tissue.cells),
         "fate_counts": tissue.fate_counts(),
         "niche_occupancy": tissue.niche_occupancy(),
+        "organ_selection": tissue.last_organ_selection_report.as_dict() if tissue.last_organ_selection_report is not None else {},
         "actions": actions,
     }
     summary_path = args.output / "tissue_summary.json"
@@ -196,6 +200,27 @@ def run_induce(args: argparse.Namespace) -> None:
     print(f"Genome written to {paths['genome']}")
     print(f"Environment written to {paths['environment']}")
     print(f"Induction report written to {paths['report']}")
+
+
+def _load_validation_results(path: Path | None) -> list[OrganValidationResult] | None:
+    if path is None:
+        return None
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, list):
+        raise ValueError("--validation-result must contain a JSON list")
+    return [
+        OrganValidationResult(
+            name=str(item["name"]),
+            passed=bool(item.get("passed", False)),
+            score=float(item.get("score", 0.0)),
+            target=str(item.get("target", "")),
+            evidence=str(item.get("evidence", "")),
+            cost=float(item.get("cost", 0.0)),
+            risk=float(item.get("risk", 0.0)),
+            latency=float(item.get("latency", 0.0)),
+        )
+        for item in data
+    ]
 
 
 def main(argv: list[str] | None = None) -> None:

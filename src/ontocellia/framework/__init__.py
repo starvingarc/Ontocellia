@@ -27,6 +27,7 @@ from .genome import AgentGenome, EpigeneticMarks, ExpressedGeneProgram, Expressi
 from .fate import FateAttractor, FateDecision, FateLandscape
 from .induction import InductionDraft, InductionRequest, TemplateInductionCompiler
 from .llm import ActionIntent, CellPrompt, CellPromptBuilder, EffectorRuntime, LLMResponse, MockLLMProvider, OpenAICompatibleProvider
+from .selection import OrganFeedbackSignal, OrganSelectionField, OrganSelectionReport, OrganSelectionTarget, OrganValidationResult
 from .specs import load_agent_genome, load_task_microenvironment
 from .topology import TissueTopology, TopologyNode
 
@@ -66,6 +67,11 @@ __all__ = [
     "LLMResponse",
     "MockLLMProvider",
     "OpenAICompatibleProvider",
+    "OrganFeedbackSignal",
+    "OrganSelectionField",
+    "OrganSelectionReport",
+    "OrganSelectionTarget",
+    "OrganValidationResult",
     "TemplateInductionCompiler",
     "TissueRuntime",
     "TissueTrace",
