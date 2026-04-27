@@ -136,6 +136,15 @@ python -m ontocellia tissue \
   --output artifacts/minimax_tissue
 ```
 
+Live provider E2E tests are opt-in so regular test runs remain deterministic:
+
+```bash
+set -a
+source .env.local
+set +a
+ONTOCELLIA_LIVE_LLM=1 conda run -n ontocellia python -m pytest -q tests/test_llm_live_e2e.py
+```
+
 ## Experiments
 
 Experiments compare a base model against named variants. v0.2 supports top-level patches for config, genome, and environment data.
