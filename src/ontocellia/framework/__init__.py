@@ -37,6 +37,7 @@ from .genome import AgentGenome, EpigeneticMarks, ExpressedGeneProgram, Expressi
 from .fate import FateAttractor, FateDecision, FateLandscape
 from .induction import InductionDraft, InductionRequest, TemplateInductionCompiler
 from .llm import ActionIntent, CellPrompt, CellPromptBuilder, EffectorRuntime, LLMResponse, MockLLMProvider, OpenAICompatibleProvider
+from .mcp import MCPInterfaceAdapter, MCPPromptSpec, MCPResourceSpec, MCPServerSpec, MCPToolResult, MCPToolSpec
 from .selection import OrganFeedbackSignal, OrganSelectionField, OrganSelectionReport, OrganSelectionTarget, OrganValidationResult
 from .specs import load_agent_genome, load_task_microenvironment
 from .topology import TissueTopology, TopologyNode
@@ -72,6 +73,12 @@ __all__ = [
     "MorphogenField",
     "MorphogenGradient",
     "MorphogenSource",
+    "MCPInterfaceAdapter",
+    "MCPPromptSpec",
+    "MCPResourceSpec",
+    "MCPServerSpec",
+    "MCPToolResult",
+    "MCPToolSpec",
     "Niche",
     "MatrixRecord",
     "MessageScope",

@@ -199,6 +199,7 @@ def run_tissue(args: argparse.Namespace) -> None:
         "niche_occupancy": tissue.niche_occupancy(),
         "organ_selection": tissue.last_organ_selection_report.as_dict() if tissue.last_organ_selection_report is not None else {},
         "validation_results": len(validation_results),
+        "mcp_interfaces": sum(1 for interface in environment.interfaces if interface.id.startswith("mcp:")),
         "messages": sum(1 for event in tissue.trace.events if event["type"] == "message_emitted"),
         "matrix_records": len(tissue.environment.matrix.records),
         "handoffs": sum(1 for event in tissue.trace.events if event["type"] == "handoff_completed"),

@@ -70,6 +70,35 @@ python -m ontocellia tissue \
 
 The runner uses exact command allowlisting and does not execute through a shell. It writes `validation_results.json`, records hook events in `tissue_trace.json`, and feeds the resulting `OrganValidationResult` records back into organ selection.
 
+## MCP Adapter Specs
+
+MCP entries live inside the environment spec. Ontocellia maps them into biological interfaces without starting external MCP servers.
+
+```yaml
+mcp:
+  servers:
+    - id: repo
+      tools:
+        - name: read_file
+          description: Read a workspace file.
+          accepts_fates: [explorer, repair]
+          input_schema:
+            type: object
+      resources:
+        - id: failing-log
+          uri: file://pytest.log
+          content: 3 failing tests
+          tags: [test_failure, repo]
+          position:
+            node_id: repair-niche
+      prompts:
+        - id: repair-protocol
+          template: Inspect failure, patch narrow, validate.
+          tags: [repair]
+```
+
+Loaded tools appear as `mcp:<server>:tool:<name>` membrane channels, resources become matrix records, and prompts become induction-factor interfaces. The tissue summary includes `mcp_interfaces`.
+
 ## LLM Effectors
 
 Mock LLM mode is deterministic:

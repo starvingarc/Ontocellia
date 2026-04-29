@@ -134,6 +134,7 @@ class TaskMicroenvironment:
     organ_feedback: OrganFeedbackSignal | None = None
     matrix: ExtracellularMatrix | dict[str, Any] = field(default_factory=ExtracellularMatrix)
     communication_policy: CommunicationPolicy = field(default_factory=CommunicationPolicy)
+    mcp_adapter: Any | None = None
 
     def __post_init__(self) -> None:
         if self.topology is None:

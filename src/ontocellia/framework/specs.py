@@ -10,6 +10,7 @@ from ontocellia.framework.communication import CommunicationPolicy, Extracellula
 from ontocellia.framework.core import ExtracellularInterface, MorphogenField, MorphogenSource, Niche, TaskMicroenvironment
 from ontocellia.framework.fate import FateAttractor, FateLandscape
 from ontocellia.framework.genome import AgentGenome, EpigeneticMarks, Gene, RegulatoryElement
+from ontocellia.framework.mcp import MCPInterfaceAdapter, MCPPromptSpec, MCPResourceSpec, MCPServerSpec, MCPToolSpec
 from ontocellia.framework.selection import OrganSelectionTarget
 from ontocellia.framework.topology import TissueTopology, TopologyNode
 
@@ -52,7 +53,7 @@ def load_task_microenvironment(path: str | Path) -> TaskMicroenvironment:
         )
         for interface in data.get("interfaces", [])
     ]
-    return TaskMicroenvironment(
+    environment = TaskMicroenvironment(
         objective=objective,
         morphogens=morphogens,
         niches=niches,
@@ -63,6 +64,10 @@ def load_task_microenvironment(path: str | Path) -> TaskMicroenvironment:
         matrix=_matrix(data.get("matrix")),
         communication_policy=_communication_policy(data.get("communication")),
     )
+    mcp_adapter = _mcp_adapter(data.get("mcp"))
+    if mcp_adapter is not None:
+        mcp_adapter.apply_to_environment(environment)
+    return environment
 
 
 def _load_yaml(path: str | Path) -> dict[str, Any]:
@@ -172,6 +177,56 @@ def _matrix(data: Any) -> ExtracellularMatrix:
         for index, record in enumerate(data.get("records", []))
     ]
     return ExtracellularMatrix(records=records)
+
+
+def _mcp_adapter(data: Any) -> MCPInterfaceAdapter | None:
+    if not isinstance(data, dict):
+        return None
+    servers = [_mcp_server(server) for server in data.get("servers", [])]
+    return MCPInterfaceAdapter(servers=servers)
+
+
+def _mcp_server(data: dict[str, Any]) -> MCPServerSpec:
+    return MCPServerSpec(
+        id=str(data["id"]),
+        name=str(data.get("name", "")),
+        tools=[_mcp_tool(tool) for tool in data.get("tools", [])],
+        resources=[_mcp_resource(resource) for resource in data.get("resources", [])],
+        prompts=[_mcp_prompt(prompt) for prompt in data.get("prompts", [])],
+        metadata=dict(data.get("metadata", {})),
+    )
+
+
+def _mcp_tool(data: dict[str, Any]) -> MCPToolSpec:
+    return MCPToolSpec(
+        name=str(data["name"]),
+        description=str(data.get("description", "")),
+        input_schema=dict(data.get("input_schema", {})),
+        accepts_fates=[str(fate) for fate in data.get("accepts_fates", [])],
+        metadata=dict(data.get("metadata", {})),
+    )
+
+
+def _mcp_resource(data: dict[str, Any]) -> MCPResourceSpec:
+    return MCPResourceSpec(
+        id=str(data["id"]),
+        uri=str(data.get("uri", data["id"])),
+        content=str(data.get("content", "")),
+        tags=[str(tag) for tag in data.get("tags", [])],
+        position=_position(data.get("position", {"node_id": ""})),
+        confidence=float(data.get("confidence", 0.5)),
+        metadata=dict(data.get("metadata", {})),
+    )
+
+
+def _mcp_prompt(data: dict[str, Any]) -> MCPPromptSpec:
+    return MCPPromptSpec(
+        id=str(data["id"]),
+        template=str(data.get("template", "")),
+        tags=[str(tag) for tag in data.get("tags", [])],
+        accepts_fates=[str(fate) for fate in data.get("accepts_fates", [])],
+        metadata=dict(data.get("metadata", {})),
+    )
 
 
 def _epigenetic_marks(data: Any) -> EpigeneticMarks:

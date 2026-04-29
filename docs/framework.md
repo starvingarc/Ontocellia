@@ -9,7 +9,7 @@ Ontocellia's framework layer models a task-induced agent tissue. It is separate 
 - `MorphogenField`: global and local task signals that bias expression, migration, regeneration, and selection.
 - `TissueTopology`: graph-first tissue position model with semantic nodes, regions, neighbors, and 3D embedding fallback.
 - `FateLandscape`: fate attractors, thresholds, niche bias, competence, and hysteresis.
-- `TaskMicroenvironment`: objective, morphogens, topology, niches, extracellular interfaces, organ selection targets, communication policy, and shared matrix.
+- `TaskMicroenvironment`: objective, morphogens, topology, niches, extracellular interfaces, MCP adapter metadata, organ selection targets, communication policy, and shared matrix.
 - `TissueRuntime`: deterministic harness for development, regeneration, effectors, communication, and trace recording.
 
 ## Runtime Flow
@@ -37,6 +37,10 @@ Validation hooks remain metadata until the opt-in Validation Hook Runner is enab
 ## Communication
 
 Cells communicate with `TissueMessage` objects and durable `MatrixRecord` entries. Direct, local, fate-scoped, and broadcast messages support short-term coordination. The shared extracellular matrix stores evidence, memory, hypotheses, validation notes, and handoff context.
+
+## MCP Adapter
+
+MCP is modeled as an extracellular interface implementation detail. MCP tools become membrane-channel interfaces, MCP resources seed extracellular matrix records, MCP prompts become induction-factor interfaces, and tool results can deposit matrix evidence plus returned morphogen signals. Phase8 does not start external MCP processes or call network tools.
 
 ## Effectors
 
