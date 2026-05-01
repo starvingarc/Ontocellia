@@ -1,0 +1,12 @@
+[
+  {
+    "name": "pytest",
+    "passed": true,
+    "score": 0.92,
+    "target": "repo",
+    "evidence": "All tests passed after candidate mutation.",
+    "cost": 0.1,
+    "risk": 0.1,
+    "latency": 1.0
+  }
+]

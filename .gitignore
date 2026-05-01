@@ -12,4 +12,5 @@ artifacts_demo/
 spec_smoke/
 *.png
 *.json
+!examples/framework/validation_passed.json
 !.vscode/

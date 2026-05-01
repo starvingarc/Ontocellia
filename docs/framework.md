@@ -42,6 +42,10 @@ Cells communicate with `TissueMessage` objects and durable `MatrixRecord` entrie
 
 MCP is modeled as an extracellular interface implementation detail. MCP tools become membrane-channel interfaces, MCP resources seed extracellular matrix records, MCP prompts become induction-factor interfaces, and tool results can deposit matrix evidence plus returned morphogen signals. Phase8 does not start external MCP processes or call network tools.
 
+## Mutation Selection
+
+Mutation selection turns failed validation and matrix evidence into deterministic genome mutation candidates. Candidates are shallow gene-field changes and are only solidified when candidate validation improves over the baseline. Solidified genomes retain `LineageMutation` history for auditability.
+
 ## Effectors
 
 Effectors translate expressed gene programs into structured actions. The default rule-based path is deterministic. The mock LLM provider is deterministic for tests. Real providers are optional and use OpenAI-compatible chat completion APIs.

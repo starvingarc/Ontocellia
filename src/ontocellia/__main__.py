@@ -11,6 +11,8 @@ from ontocellia.framework import (
     EffectorRuntime,
     InductionRequest,
     MockLLMProvider,
+    MutationCandidateGenerator,
+    MutationSelectionRuntime,
     OpenAICompatibleProvider,
     OrganValidationResult,
     TemplateInductionCompiler,
@@ -20,6 +22,7 @@ from ontocellia.framework import (
     ValidationHookRunner,
     load_agent_genome,
     load_task_microenvironment,
+    write_mutation_outputs,
 )
 from ontocellia.observation import export_summary, plot_fate_timeline, plot_fields, plot_interaction_graph, plot_lineage
 from ontocellia.scheduler.runtime import ReferenceRuntime
@@ -84,6 +87,13 @@ def build_parser() -> argparse.ArgumentParser:
     induce_parser.add_argument("--interface", action="append", dest="interfaces", default=[])
     induce_parser.add_argument("--seed", type=int, default=7)
     induce_parser.add_argument("--output", type=Path, default=Path("artifacts/induced"))
+
+    mutate_parser = subparsers.add_parser("mutate", help="Generate and select genome mutations from validation evidence.")
+    mutate_parser.add_argument("--genome-spec", type=Path, required=True)
+    mutate_parser.add_argument("--environment-spec", type=Path, required=True)
+    mutate_parser.add_argument("--baseline-validation", type=Path, required=True)
+    mutate_parser.add_argument("--candidate-validation", type=Path, required=True)
+    mutate_parser.add_argument("--output", type=Path, default=Path("artifacts/mutation_selection"))
     return parser
 
 
@@ -231,6 +241,19 @@ def run_induce(args: argparse.Namespace) -> None:
     print(f"Induction report written to {paths['report']}")
 
 
+def run_mutate(args: argparse.Namespace) -> None:
+    genome = load_agent_genome(args.genome_spec)
+    environment = load_task_microenvironment(args.environment_spec)
+    baseline = _load_validation_results(args.baseline_validation) or []
+    candidate_validation = _load_validation_results(args.candidate_validation) or []
+    candidates = MutationCandidateGenerator().generate(genome, baseline, environment=environment)
+    report = MutationSelectionRuntime().select(genome, candidates, baseline, candidate_validation)
+    paths = write_mutation_outputs(report, args.output)
+    print(f"Mutation candidates written to {paths['candidates']}")
+    print(f"Mutation report written to {paths['report']}")
+    print(f"Solidified genome written to {paths['genome']}")
+
+
 def _load_validation_results(path: Path | None) -> list[OrganValidationResult] | None:
     if path is None:
         return None
@@ -281,7 +304,7 @@ def _collect_validation_hook_requests(genome: object, actions: list[dict[str, ob
 
 def main(argv: list[str] | None = None) -> None:
     args_list = list(sys.argv[1:] if argv is None else argv)
-    commands = {"run", "experiment", "validate", "schema-docs", "tissue", "induce"}
+    commands = {"run", "experiment", "validate", "schema-docs", "tissue", "induce", "mutate"}
     if args_list and args_list[0] in commands:
         args = build_parser().parse_args(args_list)
         if args.command == "run":
@@ -296,6 +319,8 @@ def main(argv: list[str] | None = None) -> None:
             run_tissue(args)
         elif args.command == "induce":
             run_induce(args)
+        elif args.command == "mutate":
+            run_mutate(args)
         return
     run_simulation(build_legacy_parser().parse_args(args_list))
 

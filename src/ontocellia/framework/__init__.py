@@ -38,6 +38,7 @@ from .fate import FateAttractor, FateDecision, FateLandscape
 from .induction import InductionDraft, InductionRequest, TemplateInductionCompiler
 from .llm import ActionIntent, CellPrompt, CellPromptBuilder, EffectorRuntime, LLMResponse, MockLLMProvider, OpenAICompatibleProvider
 from .mcp import MCPInterfaceAdapter, MCPPromptSpec, MCPResourceSpec, MCPServerSpec, MCPToolResult, MCPToolSpec
+from .mutation import MutationCandidate, MutationCandidateGenerator, MutationSelectionReport, MutationSelectionRuntime, write_mutation_outputs
 from .selection import OrganFeedbackSignal, OrganSelectionField, OrganSelectionReport, OrganSelectionTarget, OrganValidationResult
 from .specs import load_agent_genome, load_task_microenvironment
 from .topology import TissueTopology, TopologyNode
@@ -79,6 +80,10 @@ __all__ = [
     "MCPServerSpec",
     "MCPToolResult",
     "MCPToolSpec",
+    "MutationCandidate",
+    "MutationCandidateGenerator",
+    "MutationSelectionReport",
+    "MutationSelectionRuntime",
     "Niche",
     "MatrixRecord",
     "MessageScope",
@@ -109,4 +114,5 @@ __all__ = [
     "ValidationHookRunner",
     "load_agent_genome",
     "load_task_microenvironment",
+    "write_mutation_outputs",
 ]

@@ -99,6 +99,21 @@ mcp:
 
 Loaded tools appear as `mcp:<server>:tool:<name>` membrane channels, resources become matrix records, and prompts become induction-factor interfaces. The tissue summary includes `mcp_interfaces`.
 
+## Mutation Selection
+
+Mutation selection compares baseline and candidate validation results. It writes mutation candidates, a decision report, and a solidified genome.
+
+```bash
+python -m ontocellia mutate \
+  --genome-spec examples/framework/repo_repair_genome.yaml \
+  --environment-spec examples/framework/failing_tests_environment.yaml \
+  --baseline-validation examples/framework/validation_failed.json \
+  --candidate-validation examples/framework/validation_passed.json \
+  --output artifacts/mutation_selection
+```
+
+The input genome is never overwritten. If candidate validation does not improve, `solidified_genome.yaml` contains the original genome and the report marks the decision as `not_selected`.
+
 ## LLM Effectors
 
 Mock LLM mode is deterministic:
