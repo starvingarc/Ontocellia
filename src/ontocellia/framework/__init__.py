@@ -33,6 +33,7 @@ from .communication import (
     MessageScope,
     TissueMessage,
 )
+from .demo import DemoResult, run_repo_repair_demo
 from .genome import AgentGenome, EpigeneticMarks, ExpressedGeneProgram, ExpressionContext, Gene, LineageMutation, RegulatoryElement
 from .fate import FateAttractor, FateDecision, FateLandscape
 from .induction import InductionDraft, InductionRequest, TemplateInductionCompiler
@@ -57,6 +58,7 @@ __all__ = [
     "CommunicationPolicy",
     "CommunicationRuntime",
     "DifferentiatedCellState",
+    "DemoResult",
     "EffectorRuntime",
     "EpigeneticMarks",
     "ExtracellularInterface",
@@ -114,5 +116,6 @@ __all__ = [
     "ValidationHookRunner",
     "load_agent_genome",
     "load_task_microenvironment",
+    "run_repo_repair_demo",
     "write_mutation_outputs",
 ]

@@ -114,6 +114,17 @@ python -m ontocellia mutate \
 
 The input genome is never overwritten. If candidate validation does not improve, `solidified_genome.yaml` contains the original genome and the report marks the decision as `not_selected`.
 
+## Complete Demo
+
+The deterministic repo repair demo writes induced specs, tissue trace, mock LLM intents, validation evidence, mutation outputs, and a final report.
+
+```bash
+python -m ontocellia demo \
+  --task "Fix failing tests while preserving behavior" \
+  --steps 4 \
+  --output artifacts/complete_repo_repair_demo
+```
+
 ## LLM Effectors
 
 Mock LLM mode is deterministic:

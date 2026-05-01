@@ -22,6 +22,7 @@ from ontocellia.framework import (
     ValidationHookRunner,
     load_agent_genome,
     load_task_microenvironment,
+    run_repo_repair_demo,
     write_mutation_outputs,
 )
 from ontocellia.observation import export_summary, plot_fate_timeline, plot_fields, plot_interaction_graph, plot_lineage
@@ -94,6 +95,12 @@ def build_parser() -> argparse.ArgumentParser:
     mutate_parser.add_argument("--baseline-validation", type=Path, required=True)
     mutate_parser.add_argument("--candidate-validation", type=Path, required=True)
     mutate_parser.add_argument("--output", type=Path, default=Path("artifacts/mutation_selection"))
+
+    demo_parser = subparsers.add_parser("demo", help="Run a complete deterministic repo repair tissue demo.")
+    demo_parser.add_argument("--task", default="Fix failing tests while preserving existing behavior.")
+    demo_parser.add_argument("--steps", type=int, default=4)
+    demo_parser.add_argument("--seed", type=int, default=7)
+    demo_parser.add_argument("--output", type=Path, default=Path("artifacts/complete_repo_repair_demo"))
     return parser
 
 
@@ -254,6 +261,12 @@ def run_mutate(args: argparse.Namespace) -> None:
     print(f"Solidified genome written to {paths['genome']}")
 
 
+def run_demo(args: argparse.Namespace) -> None:
+    result = run_repo_repair_demo(output=args.output, task=args.task, steps=args.steps, seed=args.seed)
+    print(f"Demo summary written to {result.summary_path}")
+    print(f"Demo report written to {result.report_path}")
+
+
 def _load_validation_results(path: Path | None) -> list[OrganValidationResult] | None:
     if path is None:
         return None
@@ -304,7 +317,7 @@ def _collect_validation_hook_requests(genome: object, actions: list[dict[str, ob
 
 def main(argv: list[str] | None = None) -> None:
     args_list = list(sys.argv[1:] if argv is None else argv)
-    commands = {"run", "experiment", "validate", "schema-docs", "tissue", "induce", "mutate"}
+    commands = {"run", "experiment", "validate", "schema-docs", "tissue", "induce", "mutate", "demo"}
     if args_list and args_list[0] in commands:
         args = build_parser().parse_args(args_list)
         if args.command == "run":
@@ -321,6 +334,8 @@ def main(argv: list[str] | None = None) -> None:
             run_induce(args)
         elif args.command == "mutate":
             run_mutate(args)
+        elif args.command == "demo":
+            run_demo(args)
         return
     run_simulation(build_legacy_parser().parse_args(args_list))
 

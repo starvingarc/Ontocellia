@@ -46,6 +46,10 @@ MCP is modeled as an extracellular interface implementation detail. MCP tools be
 
 Mutation selection turns failed validation and matrix evidence into deterministic genome mutation candidates. Candidates are shallow gene-field changes and are only solidified when candidate validation improves over the baseline. Solidified genomes retain `LineageMutation` history for auditability.
 
+## Complete Demo
+
+The complete repo repair demo connects induction, tissue development, mock LLM effectors, communication, validation evidence, mutation selection, and report artifacts in one deterministic workflow.
+
 ## Effectors
 
 Effectors translate expressed gene programs into structured actions. The default rule-based path is deterministic. The mock LLM provider is deterministic for tests. Real providers are optional and use OpenAI-compatible chat completion APIs.
