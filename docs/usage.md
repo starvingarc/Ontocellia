@@ -9,6 +9,41 @@ conda env create -f environment.yml
 conda activate ontocellia
 ```
 
+## Interactive CLI
+
+Start Ontocellia without arguments to enter the interactive CLI:
+
+```bash
+python -m ontocellia
+```
+
+Useful interactive commands:
+
+```text
+/setup
+/config
+/config models
+/use deepseek
+/config models test deepseek
+/run tissue
+/exit
+```
+
+The interactive shell uses a lightweight Soft Lab Console layout with boxed status panels, model profile markers, and `ontocellia ▸` as the prompt.
+
+The setup flow uses numbered provider and model choices. It stores local model configuration under `~/.ontocellia/`. API keys are stored in `~/.ontocellia/secrets.env` with user-only file permissions when entered through `/setup`.
+
+Non-interactive equivalents are available:
+
+```bash
+python -m ontocellia config setup
+python -m ontocellia config models list
+python -m ontocellia config models set deepseek
+python -m ontocellia config models test deepseek
+python -m ontocellia config get models.default
+python -m ontocellia config file
+```
+
 ## Run A Framework Tissue
 
 ```bash
@@ -144,6 +179,20 @@ Real providers are optional. API keys are read from environment variables and ar
 | `deepseek` | `DEEPSEEK_API_KEY` | `https://api.deepseek.com` |
 | `kimi` | `MOONSHOT_API_KEY` or `KIMI_API_KEY` | `https://api.moonshot.ai/v1` |
 | `minimax` | `MINIMAX_API_KEY` | `https://api.minimax.io/v1` |
+| `openai` | `OPENAI_API_KEY` | `https://api.openai.com/v1` |
+| `openrouter` | `OPENROUTER_API_KEY` | `https://openrouter.ai/api/v1` |
+| `ollama` | `OLLAMA_API_KEY` | `http://localhost:11434/v1` |
+| `custom-openai-compatible` | `ONTOCELLIA_CUSTOM_API_KEY` | configured in setup |
+
+After configuring a default model profile, use the simplified LLM effector:
+
+```bash
+python -m ontocellia tissue \
+  --genome-spec examples/framework/repo_repair_genome.yaml \
+  --environment-spec examples/framework/failing_tests_environment.yaml \
+  --effector llm \
+  --output artifacts/configured_llm_tissue
+```
 
 MiniMax token-plan keys may require a regional host:
 

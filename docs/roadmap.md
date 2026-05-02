@@ -1,6 +1,6 @@
 # Roadmap
 
-Ontocellia is being built as a framework-first developmental agent tissue system. The current foundation includes genome, cell, induction, LLM effector, developmental field, organ selection, communication, validation-runner, MCP-adapter, mutation-selection, and complete-demo layers.
+Ontocellia is being built as a framework-first developmental agent tissue system. The current foundation includes genome, cell, induction, LLM effector, developmental field, organ selection, communication, validation-runner, MCP-adapter, mutation-selection, complete-demo, and interactive model-configuration layers.
 
 ## Completed
 
@@ -15,6 +15,7 @@ Ontocellia is being built as a framework-first developmental agent tissue system
 - Phase 8: MCP / extracellular interface adapter
 - Phase 9: Mutation-selection-solidification
 - Phase 10: Complete task tissue demo
+- Phase 11: Interactive model configuration CLI
 
 ## Product Direction
 

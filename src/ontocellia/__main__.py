@@ -1,10 +1,22 @@
 from __future__ import annotations
 
 import argparse
+import getpass
 import json
 import sys
 from pathlib import Path
 
+from ontocellia.cli_ui import (
+    prompt,
+    render_banner,
+    render_config_status,
+    render_error,
+    render_help,
+    render_models,
+    render_choice_list,
+    render_provider_catalog,
+    render_tissue_summary,
+)
 from ontocellia.config import GeneAsset, GeneKind, OntocelliaConfig
 from ontocellia.experiments import ExperimentRunner
 from ontocellia.framework import (
@@ -13,7 +25,6 @@ from ontocellia.framework import (
     MockLLMProvider,
     MutationCandidateGenerator,
     MutationSelectionRuntime,
-    OpenAICompatibleProvider,
     OrganValidationResult,
     TemplateInductionCompiler,
     TissueRuntime,
@@ -22,8 +33,23 @@ from ontocellia.framework import (
     ValidationHookRunner,
     load_agent_genome,
     load_task_microenvironment,
+    resolve_effector_provider,
     run_repo_repair_demo,
     write_mutation_outputs,
+)
+from ontocellia.framework.llm import CellPrompt
+from ontocellia.framework.model_config import (
+    PROVIDER_DEFAULTS,
+    ModelProfile,
+    config_path,
+    get_config_value,
+    load_secret_env,
+    load_user_config,
+    save_secret,
+    save_user_config,
+    secrets_path,
+    set_config_value,
+    unset_config_value,
 )
 from ontocellia.observation import export_summary, plot_fate_timeline, plot_fields, plot_interaction_graph, plot_lineage
 from ontocellia.scheduler.runtime import ReferenceRuntime
@@ -73,7 +99,8 @@ def build_parser() -> argparse.ArgumentParser:
     tissue_parser.add_argument("--steps", type=int, default=8)
     tissue_parser.add_argument("--seed", type=int, default=7)
     tissue_parser.add_argument("--stem-cells", type=int, default=6)
-    tissue_parser.add_argument("--effector", choices=["rule", "mock-llm", "deepseek", "kimi", "minimax"], default="rule")
+    tissue_parser.add_argument("--effector", choices=["rule", "mock-llm", "llm", "deepseek", "kimi", "minimax"], default="rule")
+    tissue_parser.add_argument("--model-profile")
     tissue_parser.add_argument("--llm-model")
     tissue_parser.add_argument("--llm-base-url")
     tissue_parser.add_argument("--validation-result", type=Path)
@@ -101,6 +128,29 @@ def build_parser() -> argparse.ArgumentParser:
     demo_parser.add_argument("--steps", type=int, default=4)
     demo_parser.add_argument("--seed", type=int, default=7)
     demo_parser.add_argument("--output", type=Path, default=Path("artifacts/complete_repo_repair_demo"))
+
+    config_parser = subparsers.add_parser("config", help="Inspect or edit user configuration.")
+    config_subparsers = config_parser.add_subparsers(dest="config_command", required=True)
+    config_subparsers.add_parser("file", help="Print the active config file path.")
+    config_subparsers.add_parser("setup", help="Run first-time model provider setup.")
+    config_subparsers.add_parser("validate", help="Validate the active config file.")
+    config_get = config_subparsers.add_parser("get", help="Read a config value.")
+    config_get.add_argument("path")
+    config_set = config_subparsers.add_parser("set", help="Set a config value.")
+    config_set.add_argument("path")
+    config_set.add_argument("value")
+    config_unset = config_subparsers.add_parser("unset", help="Unset a config value.")
+    config_unset.add_argument("path")
+
+    config_models = config_subparsers.add_parser("models", help="Inspect, select, or test model profiles.")
+    models_subparsers = config_models.add_subparsers(dest="models_command", required=True)
+    models_subparsers.add_parser("add", help="Add a model profile interactively.")
+    models_subparsers.add_parser("list", help="List configured model profiles.")
+    models_subparsers.add_parser("status", help="Show model configuration status.")
+    models_set = models_subparsers.add_parser("set", help="Set the default model profile.")
+    models_set.add_argument("profile")
+    models_test = models_subparsers.add_parser("test", help="Send a minimal provider smoke request.")
+    models_test.add_argument("profile", nargs="?")
     return parser
 
 
@@ -187,11 +237,12 @@ def run_tissue(args: argparse.Namespace) -> None:
     validation_results = _load_validation_results(args.validation_result) or []
     tissue = TissueRuntime.seeded(genome=genome, environment=environment, stem_cells=args.stem_cells, seed=args.seed)
     tissue.develop(ticks=args.steps, validation_results=validation_results)
-    provider = None
-    if args.effector == "mock-llm":
-        provider = MockLLMProvider()
-    elif args.effector != "rule":
-        provider = OpenAICompatibleProvider.from_name(args.effector, model=args.llm_model, base_url=args.llm_base_url)
+    provider = resolve_effector_provider(
+        args.effector,
+        model=args.llm_model,
+        base_url=args.llm_base_url,
+        model_profile=args.model_profile,
+    )
     effectors = EffectorRuntime(provider) if provider is not None else None
     actions = tissue.execute(effectors=effectors)
     runner_results: list[OrganValidationResult] = []
@@ -267,6 +318,187 @@ def run_demo(args: argparse.Namespace) -> None:
     print(f"Demo report written to {result.report_path}")
 
 
+def run_configure(args: argparse.Namespace) -> None:
+    config = load_user_config()
+    print("Configure Ontocellia model provider")
+    provider = _choose_provider()
+    defaults = PROVIDER_DEFAULTS[provider]
+    profile_name = provider
+    model = _choose_model(provider, defaults)
+    base_url = _setup_base_url(provider, defaults)
+    api_key_env = _setup_api_key_env(provider, defaults)
+    api_key = ""
+    if api_key_env:
+        api_key = getpass.getpass(f"API key for {api_key_env} (leave blank to skip): ")
+    config.profiles[profile_name] = ModelProfile(
+        provider=provider,
+        model=model,
+        base_url=base_url,
+        api_key_env=api_key_env,
+    )
+    if not config.default_model or _prompt("Set as default? yes/no", "yes").lower().startswith("y"):
+        config.default_model = profile_name
+    path = save_user_config(config)
+    if api_key and api_key_env:
+        save_secret(api_key_env, api_key)
+        print(f"Secret saved to {secrets_path()}")
+    print(f"Config saved to {path}")
+
+
+def _choose_provider() -> str:
+    provider_names = _ordered_provider_names()
+    print(render_provider_catalog(PROVIDER_DEFAULTS, title="Choose Provider"))
+    while True:
+        value = _prompt("provider", "2")
+        provider = _choice_value(value, provider_names)
+        if provider is not None:
+            return provider
+        print(render_error(f"Unknown provider selection: {value}", "Choose a number from the provider list."))
+
+
+def _choose_model(provider: str, defaults: dict[str, object]) -> str:
+    choices = [str(item) for item in defaults.get("models", [])]
+    if provider == "custom-openai-compatible":
+        return _prompt("model", str(defaults["model"]))
+    if not choices:
+        return str(defaults["model"])
+    print(render_choice_list("Choose Model", choices))
+    while True:
+        value = _prompt("model", "1")
+        model = _choice_value(value, choices)
+        if model is not None:
+            return model
+        print(render_error(f"Unknown model selection: {value}", "Choose a number from the model list."))
+
+
+def _setup_base_url(provider: str, defaults: dict[str, object]) -> str:
+    if provider == "custom-openai-compatible":
+        return _prompt("base url", str(defaults["base_url"]))
+    return str(defaults["base_url"])
+
+
+def _setup_api_key_env(provider: str, defaults: dict[str, object]) -> str:
+    if provider == "custom-openai-compatible":
+        return _prompt("api key env", str(defaults["api_key_env"]))
+    return str(defaults["api_key_env"])
+
+
+def run_config_command(args: argparse.Namespace) -> None:
+    config = load_user_config()
+    if args.config_command == "file":
+        print(config_path())
+    elif args.config_command == "setup":
+        run_configure(args)
+    elif args.config_command == "validate":
+        _validate_user_config(config)
+        print(render_config_status(config_path(), secrets_path()))
+    elif args.config_command == "models":
+        run_models_command(args)
+    elif args.config_command == "get":
+        value = get_config_value(config, args.path)
+        print(json.dumps(value, sort_keys=True))
+    elif args.config_command == "set":
+        set_config_value(config, args.path, args.value)
+        save_user_config(config)
+        print(f"Set {args.path}")
+    elif args.config_command == "unset":
+        unset_config_value(config, args.path)
+        save_user_config(config)
+        print(f"Unset {args.path}")
+
+
+def run_models_command(args: argparse.Namespace) -> None:
+    config = load_user_config()
+    if args.models_command == "add":
+        run_configure(args)
+    elif args.models_command == "list":
+        _print_model_profiles(config)
+    elif args.models_command == "status":
+        print(render_config_status(config_path(), secrets_path()))
+        print(render_models(config, include_key_status=True, secrets=load_secret_env()))
+        print(render_provider_catalog(PROVIDER_DEFAULTS))
+    elif args.models_command == "set":
+        if args.profile not in config.profiles:
+            raise SystemExit(f"Unknown model profile: {args.profile}")
+        config.default_model = args.profile
+        save_user_config(config)
+        print(f"Default model profile set to {args.profile}")
+    elif args.models_command == "test":
+        provider = resolve_effector_provider("llm", model_profile=args.profile)
+        if isinstance(provider, MockLLMProvider):
+            print("Model profile test passed: mock-llm")
+            return
+        prompt = CellPrompt(
+            system="Return exactly one compact JSON object for an Ontocellia ActionIntent.",
+            context={
+                "cell_id": 1,
+                "fate": "repair",
+                "position": {"node_id": "repair-niche"},
+                "expressed_gene_ids": ["gene_repair_from_test_failures"],
+                "allowed_interfaces": ["workspace", "pytest"],
+                "validation_hooks": [],
+            },
+            output_schema={"type": "ActionIntent"},
+        )
+        response = provider.complete(prompt)
+        print(f"Model profile test passed: {getattr(provider, 'name', response.model)} / {response.model}")
+
+
+def run_interactive(input_stream: object | None = None, output_stream: object | None = None) -> None:
+    input_stream = input_stream or sys.stdin
+    output_stream = output_stream or sys.stdout
+    print(render_banner(load_user_config()), file=output_stream)
+    while True:
+        print(prompt(), end="", file=output_stream, flush=True)
+        line = input_stream.readline()
+        if line == "":
+            print("", file=output_stream)
+            return
+        command = line.strip()
+        if not command:
+            continue
+        if command.startswith("/"):
+            command = command[1:]
+        if command in {"exit", "quit"}:
+            print("culture closed. see you next induction.", file=output_stream)
+            return
+        if command == "help":
+            print(render_help(), file=output_stream)
+        elif command == "setup":
+            run_configure(argparse.Namespace(section="models"))
+        elif command == "config":
+            _validate_user_config(load_user_config())
+            print(render_config_status(config_path(), secrets_path()), file=output_stream)
+        elif command == "config models":
+            print(render_models(load_user_config()), file=output_stream)
+        elif command == "config models add":
+            run_configure(argparse.Namespace(section="models"))
+        elif command.startswith("config models test"):
+            parts = command.split()
+            run_models_command(argparse.Namespace(models_command="test", profile=parts[3] if len(parts) > 3 else None))
+        elif command.startswith("use "):
+            run_models_command(argparse.Namespace(models_command="set", profile=command.split(maxsplit=1)[1]))
+        elif command == "run tissue":
+            main(
+                [
+                    "tissue",
+                    "--genome-spec",
+                    "examples/framework/repo_repair_genome.yaml",
+                    "--environment-spec",
+                    "examples/framework/failing_tests_environment.yaml",
+                    "--effector",
+                    "llm",
+                    "--output",
+                    "artifacts/interactive_tissue",
+                ]
+            )
+            summary_path = Path("artifacts/interactive_tissue/tissue_summary.json")
+            if summary_path.exists():
+                print(render_tissue_summary(summary_path, json.loads(summary_path.read_text(encoding="utf-8"))), file=output_stream)
+        else:
+            print(render_error(f"Unknown command: {line.strip()}", "Type /help to see available commands."), file=output_stream)
+
+
 def _load_validation_results(path: Path | None) -> list[OrganValidationResult] | None:
     if path is None:
         return None
@@ -315,9 +547,66 @@ def _collect_validation_hook_requests(genome: object, actions: list[dict[str, ob
     return requests
 
 
+def _prompt(label: str, default: str) -> str:
+    suffix = f" [{default}]" if default else ""
+    value = input(f"{label}{suffix}: ").strip()
+    return value or default
+
+
+def _choice_value(value: str, choices: list[str]) -> str | None:
+    if value.isdigit():
+        index = int(value)
+        if 1 <= index <= len(choices):
+            return choices[index - 1]
+        return None
+    normalized = value.strip().lower()
+    for choice in choices:
+        if choice.lower() == normalized:
+            return choice
+    return None
+
+
+def _ordered_provider_names() -> list[str]:
+    preferred = [
+        "mock-llm",
+        "deepseek",
+        "minimax",
+        "kimi",
+        "openai",
+        "openrouter",
+        "ollama",
+        "custom-openai-compatible",
+    ]
+    return [name for name in preferred if name in PROVIDER_DEFAULTS] + [
+        name for name in sorted(PROVIDER_DEFAULTS) if name not in preferred
+    ]
+
+
+def _validate_user_config(config: object) -> None:
+    if not isinstance(config, object):
+        raise ValueError("invalid config")
+
+
+def _print_model_profiles(config: object, *, include_key_status: bool = False) -> None:
+    print(render_models(config, include_key_status=include_key_status, secrets=load_secret_env()))
+
+
 def main(argv: list[str] | None = None) -> None:
     args_list = list(sys.argv[1:] if argv is None else argv)
-    commands = {"run", "experiment", "validate", "schema-docs", "tissue", "induce", "mutate", "demo"}
+    if not args_list:
+        run_interactive()
+        return
+    commands = {
+        "run",
+        "experiment",
+        "validate",
+        "schema-docs",
+        "tissue",
+        "induce",
+        "mutate",
+        "demo",
+        "config",
+    }
     if args_list and args_list[0] in commands:
         args = build_parser().parse_args(args_list)
         if args.command == "run":
@@ -336,7 +625,11 @@ def main(argv: list[str] | None = None) -> None:
             run_mutate(args)
         elif args.command == "demo":
             run_demo(args)
+        elif args.command == "config":
+            run_config_command(args)
         return
+    if args_list and not args_list[0].startswith("-"):
+        build_parser().parse_args(args_list)
     run_simulation(build_legacy_parser().parse_args(args_list))
 
 

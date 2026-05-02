@@ -53,3 +53,7 @@ The complete repo repair demo connects induction, tissue development, mock LLM e
 ## Effectors
 
 Effectors translate expressed gene programs into structured actions. The default rule-based path is deterministic. The mock LLM provider is deterministic for tests. Real providers are optional and use OpenAI-compatible chat completion APIs.
+
+## Model Configuration
+
+The model configuration layer keeps provider selection outside the genome. `ontocellia` without arguments starts an interactive CLI for configuring model profiles, selecting defaults, testing providers, and launching a configured tissue run. User config lives under `~/.ontocellia/`; traces record provider/profile/model metadata without recording API keys.

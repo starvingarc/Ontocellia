@@ -28,6 +28,12 @@ python -m ontocellia tissue \
 
 This writes `tissue_summary.json` and `tissue_trace.json`.
 
+For interactive model/provider setup:
+
+```bash
+python -m ontocellia
+```
+
 ## Documentation
 
 - [Framework overview](docs/framework.md)

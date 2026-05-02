@@ -271,6 +271,26 @@ def _provider_defaults(name: str) -> dict[str, object]:
             "base_url": "https://api.minimax.io/v1",
             "model": "MiniMax-M2.7",
         },
+        "openai": {
+            "key_env": ["OPENAI_API_KEY"],
+            "base_url": "https://api.openai.com/v1",
+            "model": "gpt-4.1-mini",
+        },
+        "openrouter": {
+            "key_env": ["OPENROUTER_API_KEY"],
+            "base_url": "https://openrouter.ai/api/v1",
+            "model": "openai/gpt-4.1-mini",
+        },
+        "ollama": {
+            "key_env": ["OLLAMA_API_KEY"],
+            "base_url": "http://localhost:11434/v1",
+            "model": "llama3.1",
+        },
+        "custom-openai-compatible": {
+            "key_env": ["ONTOCELLIA_CUSTOM_API_KEY"],
+            "base_url": "https://example.com/v1",
+            "model": "custom-model",
+        },
     }
     if name not in providers:
         raise ValueError(f"unknown LLM provider: {name}")
