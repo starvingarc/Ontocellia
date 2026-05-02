@@ -10,23 +10,26 @@ Ontocellia's framework layer models a task-induced agent tissue. It is separate 
 - `TissueTopology`: graph-first tissue position model with semantic nodes, regions, neighbors, and 3D embedding fallback.
 - `FateLandscape`: fate attractors, thresholds, niche bias, competence, and hysteresis.
 - `TaskMicroenvironment`: objective, morphogens, topology, niches, extracellular interfaces, MCP adapter metadata, organ selection targets, communication policy, and shared matrix.
-- `TissueRuntime`: deterministic harness for development, regeneration, effectors, communication, and trace recording.
+- `TissueRuntime`: deterministic harness for development, regeneration, effectors, execution, communication, and trace recording.
 
 ## Runtime Flow
 
 ```text
-seed stem cells
+seed one stem-origin cell
 refresh niche occupancy
-resolve vacancies and regeneration
-fill open niches
+resolve vacancies and regeneration signals
+proliferate into a stem/progenitor pool
 differentiate through local morphogens and fate landscape
 move cells over tissue topology
 apply organ selection feedback
 execute rule or LLM effectors
+optionally execute actions through an allowlisted extracellular execution policy
 optionally run explicitly allowlisted validation hooks
 route messages, handoffs, and matrix deposits
 record trace and summary artifacts
 ```
+
+By default, framework tissues begin from a single `zygote-origin` stem-like cell. The runtime first enters a `proliferating` stage, expands until the minimum differentiation pool is available, then commits cells into task-induced niches. Explicit `--stem-cells N` remains available for experiments that need a larger initial reserve.
 
 ## Organ Selection
 
@@ -50,10 +53,28 @@ Mutation selection turns failed validation and matrix evidence into deterministi
 
 The complete repo repair demo connects induction, tissue development, mock LLM effectors, communication, validation evidence, mutation selection, and report artifacts in one deterministic workflow.
 
+## Benchmark Harness
+
+The tissue benchmark harness evaluates framework-native agent capabilities with deterministic MiniBench tasks. It scores structured intents, interface policy compliance, matrix memory, handoff completion, self-repair recovery, lineage traceability, and decentralized coordination. The first built-in suite is `ontocellia_minibench_v1`.
+
+## Adaptive Benchmark Protocol
+
+The official benchmark harness evaluates Ontocellia as an adaptive tissue, not as a direct model wrapper. Official tasks are converted into generic task microenvironments, seeded from a single stem-origin cell, developed through the normal runtime, and reported with structure metrics such as fate distribution, proliferation, handoff completion, matrix reuse, provider-call count, validation cycles, execution success, and structure efficiency.
+
+BFCL remains available as a provider/tool-call baseline because simple function calling is usually solved well by the underlying model alone. Ontocellia's main benchmark path targets harder collaborative settings such as tau-bench, Terminal-Bench, MultiAgentBench/MARBLE-style tasks, and SWE-bench-style repo repair.
+
+## Extracellular Execution
+
+The execution layer sits between structured `ActionIntent` records and real local effects. It supports workspace reads/search, dry-run patch proposals, allowlisted patch application, `git diff`, allowlisted pytest commands, and allowlisted shell commands. Every execution creates an `ExecutionResult`, records trace events, deposits evidence into the extracellular matrix, and can be converted into an `OrganValidationResult`.
+
+Execution is opt-in. Dry-run is the default, and write or shell actions require explicit interface, command, and path allowlists.
+
 ## Effectors
 
 Effectors translate expressed gene programs into structured actions. The default rule-based path is deterministic. The mock LLM provider is deterministic for tests. Real providers are optional and use OpenAI-compatible chat completion APIs.
 
 ## Model Configuration
 
-The model configuration layer keeps provider selection outside the genome. `ontocellia` without arguments starts an interactive CLI for configuring model profiles, selecting defaults, testing providers, and launching a configured tissue run. User config lives under `~/.ontocellia/`; traces record provider/profile/model metadata without recording API keys.
+The model configuration layer keeps provider selection outside the genome. `ontocellia` without arguments starts a Textual/Rich Soft Lab Console TUI for configuring model profiles, inducing task tissues, observing agents, and inspecting intents, matrix records, handoffs, and reports. User config lives under `~/.ontocellia/`; traces record provider/profile/model metadata without recording API keys.
+
+The TUI is an observation and orchestration surface. Cells emit structured `ActionIntent` records and communicate through the shared matrix; real execution remains behind the explicit extracellular execution policy.

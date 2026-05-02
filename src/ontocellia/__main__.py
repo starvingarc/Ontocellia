@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import getpass
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -21,13 +22,18 @@ from ontocellia.config import GeneAsset, GeneKind, OntocelliaConfig
 from ontocellia.experiments import ExperimentRunner
 from ontocellia.framework import (
     EffectorRuntime,
+    ExecutionPolicy,
+    ExecutionRuntime,
     InductionRequest,
     MockLLMProvider,
     MutationCandidateGenerator,
     MutationSelectionRuntime,
+    OfficialBenchmarkRunner,
     OrganValidationResult,
     TemplateInductionCompiler,
     TissueRuntime,
+    BenchmarkSuite,
+    TissueBenchmarkRunner,
     ValidationHookPolicy,
     ValidationHookRequest,
     ValidationHookRunner,
@@ -51,6 +57,7 @@ from ontocellia.framework.model_config import (
     set_config_value,
     unset_config_value,
 )
+from ontocellia.tui import run_tui
 from ontocellia.observation import export_summary, plot_fate_timeline, plot_fields, plot_interaction_graph, plot_lineage
 from ontocellia.scheduler.runtime import ReferenceRuntime
 from ontocellia.specs import export_schema_docs, validate_experiment_spec, validate_model_specs
@@ -98,7 +105,7 @@ def build_parser() -> argparse.ArgumentParser:
     tissue_parser.add_argument("--environment-spec", type=Path, required=True)
     tissue_parser.add_argument("--steps", type=int, default=8)
     tissue_parser.add_argument("--seed", type=int, default=7)
-    tissue_parser.add_argument("--stem-cells", type=int, default=6)
+    tissue_parser.add_argument("--stem-cells", type=int, default=1)
     tissue_parser.add_argument("--effector", choices=["rule", "mock-llm", "llm", "deepseek", "kimi", "minimax"], default="rule")
     tissue_parser.add_argument("--model-profile")
     tissue_parser.add_argument("--llm-model")
@@ -107,6 +114,13 @@ def build_parser() -> argparse.ArgumentParser:
     tissue_parser.add_argument("--run-validation-hooks", action="store_true")
     tissue_parser.add_argument("--allow-validation-hook", action="append", default=[])
     tissue_parser.add_argument("--validation-timeout", type=float, default=60.0)
+    tissue_parser.add_argument("--execute-actions", action="store_true")
+    tissue_parser.add_argument("--execution-dry-run", dest="execution_dry_run", action="store_true", default=True)
+    tissue_parser.add_argument("--no-execution-dry-run", dest="execution_dry_run", action="store_false")
+    tissue_parser.add_argument("--allow-interface", action="append", default=[])
+    tissue_parser.add_argument("--allow-command", action="append", default=[])
+    tissue_parser.add_argument("--allow-write", action="append", default=[])
+    tissue_parser.add_argument("--execution-timeout", type=float, default=60.0)
     tissue_parser.add_argument("--output", type=Path, default=Path("artifacts/tissue"))
 
     induce_parser = subparsers.add_parser("induce", help="Compile a natural language task into agent tissue specs.")
@@ -128,6 +142,37 @@ def build_parser() -> argparse.ArgumentParser:
     demo_parser.add_argument("--steps", type=int, default=4)
     demo_parser.add_argument("--seed", type=int, default=7)
     demo_parser.add_argument("--output", type=Path, default=Path("artifacts/complete_repo_repair_demo"))
+
+    benchmark_parser = subparsers.add_parser("benchmark", help="Run Ontocellia tissue benchmark suites.")
+    benchmark_parser.add_argument("--suite", default="ontocellia_minibench_v1")
+    benchmark_parser.add_argument("--effector", choices=["mock-llm", "llm"], default="mock-llm")
+    benchmark_parser.add_argument("--model-profile")
+    benchmark_parser.add_argument("--steps", type=int, default=6)
+    benchmark_parser.add_argument("--execute-actions", action="store_true")
+    benchmark_parser.add_argument("--execution-dry-run", dest="execution_dry_run", action="store_true", default=True)
+    benchmark_parser.add_argument("--no-execution-dry-run", dest="execution_dry_run", action="store_false")
+    benchmark_parser.add_argument("--allow-interface", action="append", default=[])
+    benchmark_parser.add_argument("--allow-command", action="append", default=[])
+    benchmark_parser.add_argument("--output", type=Path, default=Path("artifacts/benchmarks/minibench"))
+
+    official_parser = subparsers.add_parser("official-benchmark", help="Run official benchmark data through Ontocellia.")
+    official_subparsers = official_parser.add_subparsers(dest="official_command", required=True)
+    official_prepare = official_subparsers.add_parser("prepare", help="Prepare official benchmark data or write a dry-run plan.")
+    official_prepare.add_argument("--benchmark", choices=["bfcl", "tau-bench", "terminal-bench", "multiagentbench", "swe-bench-lite"], required=True)
+    official_prepare.add_argument("--output", type=Path, default=Path("artifacts/official_benchmarks/prepare"))
+    official_prepare.add_argument("--dry-run", action="store_true")
+    official_run = official_subparsers.add_parser("run", help="Run official benchmark data with a configured model profile.")
+    official_run.add_argument("--benchmark", choices=["bfcl", "tau-bench", "terminal-bench", "multiagentbench", "swe-bench-lite"], required=True)
+    official_run.add_argument("--model-profile")
+    official_run.add_argument("--limit", type=int)
+    official_run.add_argument("--task-id")
+    official_run.add_argument("--full", action="store_true")
+    official_run.add_argument("--dry-run", action="store_true")
+    official_run.add_argument("--mode", choices=["adaptive-tissue", "provider-baseline"], default=None)
+    official_run.add_argument("--category", default="BFCL_v3_simple")
+    official_run.add_argument("--output", type=Path, default=Path("artifacts/official_benchmarks/bfcl/run"))
+
+    subparsers.add_parser("tui", help="Start the interactive Ontocellia TUI.")
 
     config_parser = subparsers.add_parser("config", help="Inspect or edit user configuration.")
     config_subparsers = config_parser.add_subparsers(dest="config_command", required=True)
@@ -245,6 +290,22 @@ def run_tissue(args: argparse.Namespace) -> None:
     )
     effectors = EffectorRuntime(provider) if provider is not None else None
     actions = tissue.execute(effectors=effectors)
+    execution_results = []
+    if args.execute_actions:
+        execution_results = tissue.execute_actions(
+            actions,
+            ExecutionRuntime(),
+            ExecutionPolicy(
+                workspace_root=Path.cwd(),
+                allowed_interfaces=[str(item) for item in args.allow_interface],
+                allowed_commands=[str(item) for item in args.allow_command],
+                allowed_write_globs=[str(item) for item in args.allow_write],
+                timeout_seconds=float(args.execution_timeout),
+                dry_run=bool(args.execution_dry_run),
+            ),
+        )
+        validation_results = [*validation_results, *[result.to_validation_result() for result in execution_results]]
+        tissue.develop(ticks=1, validation_results=validation_results)
     runner_results: list[OrganValidationResult] = []
     if args.run_validation_hooks:
         requests = _collect_validation_hook_requests(genome, actions)
@@ -264,6 +325,10 @@ def run_tissue(args: argparse.Namespace) -> None:
         "ticks": tissue.tick_count,
         "population": len(tissue.cells),
         "fate_counts": tissue.fate_counts(),
+        "stage_counts": tissue.stage_counts(),
+        "development_stage": tissue.development_stage,
+        "origin_cell_id": tissue.origin_cell_id,
+        "proliferation_events": sum(1 for event in tissue.trace.events if event["type"] == "proliferation"),
         "niche_occupancy": tissue.niche_occupancy(),
         "organ_selection": tissue.last_organ_selection_report.as_dict() if tissue.last_organ_selection_report is not None else {},
         "validation_results": len(validation_results),
@@ -272,6 +337,10 @@ def run_tissue(args: argparse.Namespace) -> None:
         "matrix_records": len(tissue.environment.matrix.records),
         "handoffs": sum(1 for event in tissue.trace.events if event["type"] == "handoff_completed"),
         "actions": actions,
+        "execution_results": len(execution_results),
+        "executed_actions": sum(1 for result in execution_results if result.status == "passed"),
+        "skipped_actions": sum(1 for result in execution_results if result.status in {"skipped", "dry_run"}),
+        "changed_files": sorted({path for result in execution_results for path in result.changed_files}),
     }
     summary_path = args.output / "tissue_summary.json"
     trace_path = args.output / "tissue_trace.json"
@@ -280,6 +349,11 @@ def run_tissue(args: argparse.Namespace) -> None:
     if args.run_validation_hooks:
         (args.output / "validation_results.json").write_text(
             json.dumps([result.as_dict() for result in validation_results], indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+    if args.execute_actions:
+        (args.output / "execution_results.json").write_text(
+            json.dumps([result.as_dict() for result in execution_results], indent=2, sort_keys=True),
             encoding="utf-8",
         )
     if provider is not None:
@@ -316,6 +390,46 @@ def run_demo(args: argparse.Namespace) -> None:
     result = run_repo_repair_demo(output=args.output, task=args.task, steps=args.steps, seed=args.seed)
     print(f"Demo summary written to {result.summary_path}")
     print(f"Demo report written to {result.report_path}")
+
+
+def run_benchmark(args: argparse.Namespace) -> None:
+    result = TissueBenchmarkRunner(
+        suite=BenchmarkSuite.builtin(args.suite),
+        effector=args.effector,
+        model_profile=args.model_profile,
+        steps=args.steps,
+        execute_actions=args.execute_actions,
+        execution_dry_run=args.execution_dry_run,
+        allowed_interfaces=[str(item) for item in args.allow_interface],
+        allowed_commands=[str(item) for item in args.allow_command],
+    ).run(args.output)
+    print(f"Benchmark summary written to {result.summary_path}")
+    print(f"Benchmark report written to {result.report_path}")
+
+
+def run_official_benchmark(args: argparse.Namespace) -> None:
+    runner = OfficialBenchmarkRunner()
+    if args.official_command == "prepare":
+        plan = runner.prepare(args.benchmark, output=args.output, dry_run=args.dry_run)
+        print(f"Official benchmark prepare plan written to {args.output / 'prepare_plan.json'}")
+        print(f"Benchmark: {plan['benchmark']}")
+        return
+    try:
+        result = runner.run(
+            benchmark=args.benchmark,
+            output=args.output,
+            model_profile=args.model_profile,
+            limit=args.limit,
+            task_id=args.task_id,
+            full=args.full,
+            dry_run=args.dry_run,
+            category=args.category,
+            mode=args.mode,
+        )
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
+    print(f"Official benchmark summary written to {result.summary_path}")
+    print(f"Official benchmark report written to {result.report_path}")
 
 
 def run_configure(args: argparse.Namespace) -> None:
@@ -594,6 +708,9 @@ def _print_model_profiles(config: object, *, include_key_status: bool = False) -
 def main(argv: list[str] | None = None) -> None:
     args_list = list(sys.argv[1:] if argv is None else argv)
     if not args_list:
+        if sys.stdin.isatty() and sys.stdout.isatty() and not os.environ.get("ONTOCELLIA_NO_TUI"):
+            run_tui()
+            return
         run_interactive()
         return
     commands = {
@@ -605,6 +722,9 @@ def main(argv: list[str] | None = None) -> None:
         "induce",
         "mutate",
         "demo",
+        "benchmark",
+        "official-benchmark",
+        "tui",
         "config",
     }
     if args_list and args_list[0] in commands:
@@ -625,6 +745,12 @@ def main(argv: list[str] | None = None) -> None:
             run_mutate(args)
         elif args.command == "demo":
             run_demo(args)
+        elif args.command == "benchmark":
+            run_benchmark(args)
+        elif args.command == "official-benchmark":
+            run_official_benchmark(args)
+        elif args.command == "tui":
+            run_tui()
         elif args.command == "config":
             run_config_command(args)
         return

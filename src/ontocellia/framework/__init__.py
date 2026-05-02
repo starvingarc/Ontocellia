@@ -34,23 +34,31 @@ from .communication import (
     TissueMessage,
 )
 from .demo import DemoResult, run_repo_repair_demo
+from .execution import ExecutionPolicy, ExecutionRequest, ExecutionResult, ExecutionRuntime
 from .genome import AgentGenome, EpigeneticMarks, ExpressedGeneProgram, ExpressionContext, Gene, LineageMutation, RegulatoryElement
 from .fate import FateAttractor, FateDecision, FateLandscape
 from .induction import InductionDraft, InductionRequest, TemplateInductionCompiler
+from .interactive import InteractiveSessionSnapshot, InteractiveTissueSession
 from .llm import ActionIntent, CellPrompt, CellPromptBuilder, EffectorRuntime, LLMResponse, MockLLMProvider, OpenAICompatibleProvider
 from .mcp import MCPInterfaceAdapter, MCPPromptSpec, MCPResourceSpec, MCPServerSpec, MCPToolResult, MCPToolSpec
 from .model_config import ModelProfile, OntocelliaUserConfig, config_path, load_user_config, resolve_effector_provider, save_user_config
 from .mutation import MutationCandidate, MutationCandidateGenerator, MutationSelectionReport, MutationSelectionRuntime, write_mutation_outputs
+from .official_benchmark import OfficialBenchmarkRunResult, OfficialBenchmarkRunner
 from .selection import OrganFeedbackSignal, OrganSelectionField, OrganSelectionReport, OrganSelectionTarget, OrganValidationResult
 from .specs import load_agent_genome, load_task_microenvironment
 from .topology import TissueTopology, TopologyNode
 from .validation import ValidationHookPolicy, ValidationHookRequest, ValidationHookRunner
+from .benchmark import BenchmarkRunResult, BenchmarkResult, BenchmarkSuite, BenchmarkTask, TissueBenchmarkRunner
 
 __all__ = [
     "ActionIntent",
     "AgentCell",
     "AdhesionProfile",
     "AgentGenome",
+    "BenchmarkRunResult",
+    "BenchmarkResult",
+    "BenchmarkSuite",
+    "BenchmarkTask",
     "CellPrompt",
     "CellPromptBuilder",
     "CellPosition",
@@ -66,6 +74,10 @@ __all__ = [
     "ExtracellularMatrix",
     "ExpressedGeneProgram",
     "ExpressionContext",
+    "ExecutionPolicy",
+    "ExecutionRequest",
+    "ExecutionResult",
+    "ExecutionRuntime",
     "FateAttractor",
     "FateDecision",
     "FateLandscape",
@@ -98,10 +110,14 @@ __all__ = [
     "TaskMicroenvironment",
     "InductionDraft",
     "InductionRequest",
+    "InteractiveSessionSnapshot",
+    "InteractiveTissueSession",
     "LLMResponse",
     "MockLLMProvider",
     "OntocelliaUserConfig",
     "OpenAICompatibleProvider",
+    "OfficialBenchmarkRunResult",
+    "OfficialBenchmarkRunner",
     "OrganFeedbackSignal",
     "OrganSelectionField",
     "OrganSelectionReport",
@@ -109,6 +125,7 @@ __all__ = [
     "OrganValidationResult",
     "TemplateInductionCompiler",
     "TissueRuntime",
+    "TissueBenchmarkRunner",
     "TissueTrace",
     "TissueTopology",
     "TissueMessage",

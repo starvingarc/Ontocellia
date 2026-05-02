@@ -171,40 +171,49 @@ class TissueRuntime:
     organ_selection_field: OrganSelectionField | None = field(default_factory=OrganSelectionField)
     last_organ_selection_report: OrganSelectionReport | None = None
     communication_runtime: CommunicationRuntime | None = field(default_factory=CommunicationRuntime)
+    development_stage: str = "proliferating"
+    origin_cell_id: int = 0
+    min_population_before_differentiation: int = 4
+    target_population: int | None = None
 
     @classmethod
     def seeded(
         cls,
         genome: AgentGenome,
         environment: TaskMicroenvironment,
-        stem_cells: int = 6,
+        stem_cells: int = 1,
         seed: int = 0,
     ) -> "TissueRuntime":
         rng = Random(seed)
         cells: dict[int, AgentCell] = {}
         for cell_id in range(stem_cells):
+            is_origin = cell_id == 0
             cells[cell_id] = AgentCell(
                 id=cell_id,
                 stage="stem",
                 fate="stem",
                 position=CellPosition(
-                    node_id=f"stem-reserve-{cell_id}",
-                    region="stem-reserve",
+                    node_id="zygote-origin" if is_origin else f"stem-reserve-{cell_id}",
+                    region="stem-origin" if is_origin else "stem-reserve",
                     embedding=(rng.uniform(3.5, 6.5), rng.uniform(3.5, 6.5), rng.uniform(0.0, 2.0)),
                 ),
                 stage_state=StemCellState(plasticity=1.0, division_potential=1.0),
             )
+            if is_origin:
+                cells[cell_id].record_event("stem_origin", potency="totipotent")
         runtime = cls(
             genome=genome,
             environment=environment,
             cells=cells,
             rng=rng,
             next_cell_id=stem_cells,
+            origin_cell_id=0,
+            target_population=max(1, sum(max(1, niche.demand) for niche in environment.niches) + 1),
         )
         assert runtime.environment.topology is not None
         for cell in runtime.cells.values():
             runtime.environment.topology.ensure_node(cell.position)
-        runtime.trace.record("seed", stem_cells=stem_cells)
+        runtime.trace.record("seed", stem_cells=stem_cells, origin_cell_id=runtime.origin_cell_id)
         return runtime
 
     def develop(self, ticks: int = 1, validation_results: list[OrganValidationResult] | None = None) -> None:
@@ -212,18 +221,35 @@ class TissueRuntime:
             self.tick_count += 1
             self._refresh_niche_occupancy()
             self._resolve_vacancies()
-            self._fill_open_niches()
+            self._proliferate()
+            if self._can_differentiate():
+                self._fill_open_niches()
             self._update_cell_positions()
             self._age_cells()
             self._apply_organ_selection(validation_results)
             self.environment.morphogens.decay()
-            self.trace.record("tick", tick=self.tick_count, fate_counts=self.fate_counts())
+            self._update_development_stage()
+            self.trace.record(
+                "tick",
+                tick=self.tick_count,
+                development_stage=self.development_stage,
+                fate_counts=self.fate_counts(),
+                stage_counts=self.stage_counts(),
+            )
 
     def fate_counts(self) -> dict[str, int]:
         counts: dict[str, int] = {}
         for cell in self.cells.values():
             if cell.alive:
                 counts[cell.fate] = counts.get(cell.fate, 0) + 1
+        return counts
+
+    def stage_counts(self) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for cell in self.cells.values():
+            if cell.alive:
+                stage = str(cell.stage)
+                counts[stage] = counts.get(stage, 0) + 1
         return counts
 
     def niche_occupancy(self) -> dict[str, int]:
@@ -278,6 +304,9 @@ class TissueRuntime:
         self.communicate(actions)
         return actions
 
+    def execute_actions(self, actions: list[dict[str, Any]], execution_runtime: Any, policy: Any) -> list[Any]:
+        return execution_runtime.execute(self, actions, policy)
+
     def communicate(self, actions: list[dict[str, Any]] | None = None) -> dict[str, list[dict[str, Any]]]:
         if (
             self.communication_runtime is None
@@ -322,13 +351,47 @@ class TissueRuntime:
                 niche.occupied_by.append(replacement.id)
 
     def _fill_open_niches(self) -> None:
-        for niche in sorted(self.environment.niches, key=lambda item: item.id):
+        for niche in sorted(self.environment.niches, key=_niche_priority):
             while len(niche.occupied_by) < niche.demand:
                 source = self._select_plastic_cell(prefer_near=niche.position)
                 if source is None:
                     return
                 committed = self._differentiate(source, niche)
                 niche.occupied_by.append(committed.id)
+
+    def _proliferate(self) -> None:
+        target_population = self.target_population or max(1, sum(max(1, niche.demand) for niche in self.environment.niches) + 1)
+        force_regeneration = any(niche.vacant_replacements for niche in self.environment.niches)
+        if len(self.cells) >= target_population and not force_regeneration:
+            return
+        available = [cell for cell in self.cells.values() if cell.niche_id is None and cell.can_divide()]
+        if not available:
+            return
+        available.sort(key=lambda cell: (_stage_rank_for_proliferation(str(cell.stage)), cell.id))
+        parent = available[0]
+        parent_stage = str(parent.stage)
+        if parent_stage == "stem":
+            child = self._spawn_child(parent, stage="progenitor", fate="stem", position=parent.position)
+            self.trace.record("asymmetric_division", parent_cell_id=parent.id, child_cell_id=child.id)
+        elif parent_stage == "progenitor":
+            child = self._spawn_child(parent, stage="transit_amplifying", fate=parent.fate, position=parent.position)
+            self.trace.record("progenitor_amplification", parent_cell_id=parent.id, child_cell_id=child.id)
+        else:
+            child = self._spawn_child(parent, stage="transit_amplifying", fate=parent.fate, position=parent.position)
+            self.trace.record("progenitor_amplification", parent_cell_id=parent.id, child_cell_id=child.id)
+        self.trace.record(
+            "proliferation",
+            parent_cell_id=parent.id,
+            child_cell_id=child.id,
+            parent_stage=parent_stage,
+            child_stage=str(child.stage),
+            population=len(self.cells),
+        )
+
+    def _can_differentiate(self) -> bool:
+        if any(niche.vacant_replacements for niche in self.environment.niches):
+            return True
+        return len(self.cells) >= self.min_population_before_differentiation
 
     def _select_plastic_cell(self, prefer_near: CellPosition | tuple[float, ...] | list[float] | dict[str, Any]) -> AgentCell | None:
         target = CellPosition.from_value(prefer_near)
@@ -350,6 +413,23 @@ class TissueRuntime:
             )
         )
         return candidates[0]
+
+    def _update_development_stage(self) -> None:
+        previous = self.development_stage
+        if any(niche.vacant_replacements for niche in self.environment.niches):
+            next_stage = "regenerating"
+        elif len(self.cells) < self.min_population_before_differentiation:
+            next_stage = "proliferating"
+        elif any(cell.stage == "differentiated" for cell in self.cells.values()):
+            if all(len(niche.occupied_by) >= niche.demand for niche in self.environment.niches):
+                next_stage = "mature"
+            else:
+                next_stage = "differentiating"
+        else:
+            next_stage = "differentiating"
+        self.development_stage = next_stage
+        if next_stage != previous:
+            self.trace.record("development_stage_changed", tick=self.tick_count, previous=previous, current=next_stage)
 
     def _differentiate(self, cell: AgentCell, niche: Niche) -> AgentCell:
         topology = _environment_topology(self.environment)
@@ -550,3 +630,20 @@ def _move_position_toward(left: CellPosition, right: CellPosition, fraction: flo
 
 def _stage_rank(stage: str) -> int:
     return {"transit_amplifying": 0, "progenitor": 1, "stem": 2}.get(stage, 3)
+
+
+def _stage_rank_for_proliferation(stage: str) -> int:
+    return {"stem": 0, "progenitor": 1, "transit_amplifying": 2}.get(stage, 3)
+
+
+def _niche_priority(niche: Niche) -> tuple[int, str]:
+    fate_order = {
+        "repair": 0,
+        "explorer": 1,
+        "reviewer": 2,
+        "builder": 3,
+        "planner": 4,
+        "memory": 5,
+        "quiescent": 6,
+    }
+    return (fate_order.get(niche.required_fate, 10), niche.id)

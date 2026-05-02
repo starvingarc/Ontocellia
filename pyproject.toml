@@ -13,6 +13,7 @@ dependencies = [
   "networkx>=3.5",
   "numpy>=2.3",
   "PyYAML>=6.0",
+  "textual>=8.2",
 ]
 
 [project.scripts]

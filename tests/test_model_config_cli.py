@@ -45,7 +45,7 @@ def test_user_config_round_trips_model_profiles(tmp_path: Path, monkeypatch: pyt
             "profiles": {
                 "deepseek": ModelProfile(
                     provider="deepseek",
-                    model="deepseek-chat",
+                    model="deepseek-v4-flash",
                     base_url="https://api.deepseek.com",
                     api_key_env="DEEPSEEK_API_KEY",
                 )
@@ -57,7 +57,7 @@ def test_user_config_round_trips_model_profiles(tmp_path: Path, monkeypatch: pyt
     loaded = load_user_config()
 
     assert loaded.default_model == "deepseek"
-    assert loaded.profile("deepseek").model == "deepseek-chat"
+    assert loaded.profile("deepseek").model == "deepseek-v4-flash"
     assert (tmp_path / "config.yaml").exists()
 
 
@@ -69,7 +69,11 @@ def test_models_set_default_updates_user_config(tmp_path: Path, monkeypatch: pyt
                 "default": "mock",
                 "profiles": {
                     "mock": ModelProfile(provider="mock-llm", model="mock-llm"),
-                    "deepseek": ModelProfile(provider="deepseek", model="deepseek-chat", api_key_env="DEEPSEEK_API_KEY"),
+                    "deepseek": ModelProfile(
+                        provider="deepseek",
+                        model="deepseek-v4-flash",
+                        api_key_env="DEEPSEEK_API_KEY",
+                    ),
                 },
             }
         )
@@ -151,7 +155,11 @@ def test_models_list_marks_default_and_non_default_profiles(tmp_path: Path, monk
             models={
                 "default": "deepseek",
                 "profiles": {
-                    "deepseek": ModelProfile(provider="deepseek", model="deepseek-chat", api_key_env="DEEPSEEK_API_KEY"),
+                    "deepseek": ModelProfile(
+                        provider="deepseek",
+                        model="deepseek-v4-flash",
+                        api_key_env="DEEPSEEK_API_KEY",
+                    ),
                     "mock": ModelProfile(provider="mock-llm", model="mock-llm"),
                 },
             }
@@ -241,7 +249,7 @@ def test_config_setup_uses_numbered_provider_and_model_choices(
     assert "Choose Model" in output
     assert config.default_model == "deepseek"
     assert config.profile("deepseek").provider == "deepseek"
-    assert config.profile("deepseek").model == "deepseek-chat"
+    assert config.profile("deepseek").model == "deepseek-v4-flash"
 
 
 def test_config_setup_custom_provider_allows_custom_base_url(

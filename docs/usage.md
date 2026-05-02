@@ -9,27 +9,46 @@ conda env create -f environment.yml
 conda activate ontocellia
 ```
 
-## Interactive CLI
+## Interactive TUI
 
-Start Ontocellia without arguments to enter the interactive CLI:
+Start Ontocellia without arguments to enter the Soft Lab Console TUI:
 
 ```bash
 python -m ontocellia
 ```
 
-Useful interactive commands:
+You can type a natural language task directly:
+
+```text
+Fix failing tests while preserving behavior.
+```
+
+The TUI induces specs, seeds a tissue, runs an initial collaboration pass, and shows agents, action intents, matrix records, handoffs, and a session report. TUI sessions write artifacts to `artifacts/tui_sessions/<session-id>/`.
+
+Framework tissues start from one stem-origin cell by default. The runtime proliferates first, then differentiates cells into task-specific fates before emitting action intents.
+
+Useful TUI commands:
 
 ```text
 /setup
-/config
-/config models
-/use deepseek
-/config models test deepseek
-/run tissue
+/models
+/new <task>
+/run [ticks]
+/step
+/agents
+/intents
+/matrix
+/handoffs
+/report
+/mock
 /exit
 ```
 
-The interactive shell uses a lightweight Soft Lab Console layout with boxed status panels, model profile markers, and `ontocellia ▸` as the prompt.
+TTY launches use the Textual/Rich TUI. Non-TTY input falls back to the lightweight boxed shell for script compatibility. You can also force the TUI with:
+
+```bash
+python -m ontocellia tui
+```
 
 The setup flow uses numbered provider and model choices. It stores local model configuration under `~/.ontocellia/`. API keys are stored in `~/.ontocellia/secrets.env` with user-only file permissions when entered through `/setup`.
 
@@ -53,6 +72,8 @@ python -m ontocellia tissue \
   --steps 4 \
   --output artifacts/repo_repair_tissue
 ```
+
+Use `--stem-cells N` only when you want an experiment to start with a larger initial stem pool.
 
 Outputs:
 
@@ -160,6 +181,96 @@ python -m ontocellia demo \
   --output artifacts/complete_repo_repair_demo
 ```
 
+## Benchmark A Tissue
+
+The built-in MiniBench suite measures Ontocellia-native agent tissue capabilities with mock LLM effectors.
+
+```bash
+python -m ontocellia benchmark \
+  --suite ontocellia_minibench_v1 \
+  --effector mock-llm \
+  --output artifacts/benchmarks/minibench
+```
+
+Outputs:
+
+- `benchmark_summary.json`
+- `benchmark_results.csv`
+- `benchmark_report.md`
+- per-task tissue traces, summaries, and action intents
+
+The TUI also supports `/benchmark`, which runs the mock MiniBench and prints a score summary.
+
+## Run Adaptive Benchmark Data
+
+Official benchmark runs use upstream task shapes and evaluate Ontocellia as a tissue. The default mode for non-BFCL benchmarks is `adaptive-tissue`.
+
+```bash
+python -m ontocellia official-benchmark run \
+  --benchmark tau-bench \
+  --model-profile deepseek \
+  --limit 1 \
+  --mode adaptive-tissue \
+  --output artifacts/official_benchmarks/tau_bench/deepseek_smoke
+```
+
+Outputs include:
+
+- `official_tasks.jsonl`
+- `ontocellia_predictions.jsonl`
+- `official_results.json`
+- `structure_report.json`
+- `adaptation_report.md`
+- `ontocellia_summary.json`
+- per-task tissue traces under `tissue_traces/`
+
+Use `--task-id` for one specific official task, or `--full` only when you intend to run the full selected benchmark. API keys are read from the configured model profile and are not written into artifacts.
+
+BFCL is kept as a provider/tool-call baseline:
+
+```bash
+python -m ontocellia official-benchmark run \
+  --benchmark bfcl \
+  --model-profile deepseek \
+  --limit 50 \
+  --mode provider-baseline \
+  --output artifacts/official_benchmarks/bfcl/provider_baseline
+```
+
+## Execute Action Intents
+
+By default, `tissue` emits intents and communication artifacts without performing local effects. Add `--execute-actions` to route intents through the extracellular execution policy. Dry-run is enabled by default.
+
+```bash
+python -m ontocellia tissue \
+  --genome-spec examples/framework/repo_repair_genome.yaml \
+  --environment-spec examples/framework/failing_tests_environment.yaml \
+  --steps 4 \
+  --effector mock-llm \
+  --execute-actions \
+  --execution-dry-run \
+  --allow-interface workspace.search \
+  --allow-interface git.diff \
+  --output artifacts/execution_dry_run
+```
+
+This writes `execution_results.json` and deposits execution evidence into the matrix. To allow real local execution, keep the allowlist exact:
+
+```bash
+python -m ontocellia tissue \
+  --genome-spec examples/framework/repo_repair_genome.yaml \
+  --environment-spec examples/framework/failing_tests_environment.yaml \
+  --effector mock-llm \
+  --execute-actions \
+  --no-execution-dry-run \
+  --allow-interface pytest.run \
+  --allow-command "python -m pytest -q" \
+  --allow-write "src/**/*.py" \
+  --output artifacts/execution_allowed
+```
+
+Ontocellia does not commit, push, install dependencies, or download benchmark data from the execution layer.
+
 ## LLM Effectors
 
 Mock LLM mode is deterministic:
@@ -183,6 +294,8 @@ Real providers are optional. API keys are read from environment variables and ar
 | `openrouter` | `OPENROUTER_API_KEY` | `https://openrouter.ai/api/v1` |
 | `ollama` | `OLLAMA_API_KEY` | `http://localhost:11434/v1` |
 | `custom-openai-compatible` | `ONTOCELLIA_CUSTOM_API_KEY` | configured in setup |
+
+DeepSeek setup offers the current official model IDs `deepseek-v4-flash` and `deepseek-v4-pro`.
 
 After configuring a default model profile, use the simplified LLM effector:
 

@@ -12,8 +12,8 @@ from ontocellia.framework.llm import MockLLMProvider, OpenAICompatibleProvider
 
 PROVIDER_DEFAULTS: dict[str, dict[str, str]] = {
     "deepseek": {
-        "model": "deepseek-chat",
-        "models": ["deepseek-chat", "deepseek-reasoner"],
+        "model": "deepseek-v4-flash",
+        "models": ["deepseek-v4-flash", "deepseek-v4-pro"],
         "base_url": "https://api.deepseek.com",
         "api_key_env": "DEEPSEEK_API_KEY",
     },

@@ -225,6 +225,12 @@ This loop should be deterministic where possible. LLM calls may introduce nondet
 
 The current implementation introduces a small programmable framework layer in `ontocellia.framework`.
 
+### Phase 11 Single-Stem Developmental Runtime
+
+The framework runtime now starts from a single stem-origin cell by default. The origin cell represents the undifferentiated seed of the task tissue rather than a preconfigured team of agents. Task morphogens and niche demand first induce proliferation into a stem/progenitor pool; differentiation begins after the pool is large enough to sustain a minimal functional tissue.
+
+Runtime development stages are `proliferating`, `differentiating`, `mature`, and `regenerating`. Stem division is asymmetric: the parent remains a reserve stem cell while the child enters the progenitor pool. Progenitors can amplify into transit-amplifying cells, and differentiated cells normally stop dividing. When a differentiated cell is removed, vacancy and damage signals drive regeneration through stem/progenitor replacement, with lineage traceable back to the origin cell.
+
 It contains:
 
 - `Gene`: the lowest-level endogenous unit with morphogen affinity, expression constraints, encoded response, and validation hooks

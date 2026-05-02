@@ -34,7 +34,7 @@ def run_repo_repair_demo(
     induction_dir = output_dir / "induction"
     induction_paths = draft.write(induction_dir)
 
-    tissue = TissueRuntime.seeded(draft.genome, draft.environment, stem_cells=6, seed=seed)
+    tissue = TissueRuntime.seeded(draft.genome, draft.environment, seed=seed)
     baseline_validation = [
         OrganValidationResult("pytest", False, 0.2, "repo", "3 failing regression tests", 0.1, 0.3, 1.2)
     ]
@@ -74,6 +74,10 @@ def run_repo_repair_demo(
             "ticks": tissue.tick_count,
             "population": len(tissue.cells),
             "fate_counts": tissue.fate_counts(),
+            "stage_counts": tissue.stage_counts(),
+            "development_stage": tissue.development_stage,
+            "origin_cell_id": tissue.origin_cell_id,
+            "proliferation_events": trace_counts["proliferation"],
             "actions": len(actions),
             "messages": trace_counts["messages"],
             "matrix_records": len(tissue.environment.matrix.records),
@@ -105,6 +109,10 @@ def _tissue_summary(tissue: TissueRuntime, actions: list[dict[str, Any]]) -> dic
         "ticks": tissue.tick_count,
         "population": len(tissue.cells),
         "fate_counts": tissue.fate_counts(),
+        "stage_counts": tissue.stage_counts(),
+        "development_stage": tissue.development_stage,
+        "origin_cell_id": tissue.origin_cell_id,
+        "proliferation_events": trace_counts["proliferation"],
         "niche_occupancy": tissue.niche_occupancy(),
         "organ_selection": tissue.last_organ_selection_report.as_dict() if tissue.last_organ_selection_report else {},
         "messages": trace_counts["messages"],
@@ -118,6 +126,7 @@ def _trace_counts(tissue: TissueRuntime) -> dict[str, int]:
     return {
         "messages": sum(1 for event in tissue.trace.events if event["type"] == "message_emitted"),
         "handoffs": sum(1 for event in tissue.trace.events if event["type"] == "handoff_completed"),
+        "proliferation": sum(1 for event in tissue.trace.events if event["type"] == "proliferation"),
     }
 
 
@@ -128,6 +137,8 @@ def _demo_report(summary: dict[str, Any]) -> str:
             "",
             f"- Task: {summary['task']}",
             f"- Tissue actions: {summary['tissue']['actions']}",
+            f"- Development stage: {summary['tissue']['development_stage']}",
+            f"- Origin cell: `{summary['tissue']['origin_cell_id']}`",
             f"- Messages: {summary['tissue']['messages']}",
             f"- Matrix records: {summary['tissue']['matrix_records']}",
             f"- Baseline validation score: {summary['validation']['baseline_score']:.3f}",

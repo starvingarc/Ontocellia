@@ -11,7 +11,7 @@ from ontocellia.framework import (
 )
 
 
-def make_repo_repair_tissue() -> TissueRuntime:
+def make_repo_repair_tissue(stem_cells: int | None = 5) -> TissueRuntime:
     genome = AgentGenome(
         genes=[
             Gene(
@@ -58,7 +58,9 @@ def make_repo_repair_tissue() -> TissueRuntime:
             ExtracellularInterface(id="workspace", kind="extracellular_matrix", accepts_fates=["explorer", "repair"]),
         ],
     )
-    return TissueRuntime.seeded(genome=genome, environment=environment, stem_cells=5, seed=11)
+    if stem_cells is None:
+        return TissueRuntime.seeded(genome=genome, environment=environment, seed=11)
+    return TissueRuntime.seeded(genome=genome, environment=environment, stem_cells=stem_cells, seed=11)
 
 
 def test_task_induces_tissue_with_positioned_functional_domains() -> None:
