@@ -92,3 +92,13 @@ The TUI is an observation and orchestration surface. Cells emit structured `Acti
 The app server exposes live tissue sessions over local HTTP and WebSocket APIs. It wraps `InteractiveTissueSession`, stores artifacts under `artifacts/server_sessions`, and streams session snapshots plus trace-derived events for induction, development, intents, messages, matrix deposits, handoffs, tool invocations, and organ feedback.
 
 The first server version is a local development surface. It binds to `127.0.0.1` by default, uses the mock provider unless configured otherwise, and does not execute tools unless the existing explicit tool policy is used by a caller.
+
+## Web Lab Design Target
+
+The Web Lab is the intended browser surface for the living tissue server. It keeps the biological product model visible: a local project contains many petri-dish sessions, and each session is one task-induced tissue culture. The home view should show a petri-dish wall with development stage, population, fate mix, and validation/risk-oriented life status.
+
+Inside a session, natural language input acts as culture-medium exchange. The server records the medium change, emits morphogen pressure, deposits the change into the extracellular matrix, and advances the same tissue lineage. The central dish should use a hybrid visual model: soft 2D cells, graph/topology overlays, message arcs, optional morphogen and matrix layers, plus a timeline for replay-oriented observation.
+
+The Web Lab also needs controlled research interventions. Users should be able to inject morphogens, clear or freeze cells, pause/resume a session, inspect a cell profile, and review pending tool invocations. Tool approval remains a membrane-channel operation backed by the extracellular tool runtime and project policy; the UI does not bypass receptor, environment, or policy gates.
+
+The detailed visual direction is captured in [web-lab-design.md](web-lab-design.md).

@@ -320,6 +320,14 @@ The app server is the live culture surface for non-terminal clients. It wraps in
 
 The server is an observation and orchestration membrane rather than a new supervisor. It does not change cell fate, genome expression, context homeostasis, or tool policy semantics. It streams what the tissue already produces: induction events, development trace entries, action intents, communication, matrix deposits, handoffs, tool results, and organ feedback.
 
+### Web Lab Petri Dish Frontend Design Target
+
+The Web Lab is the intended visual culture room for the app server. A local project contains many petri-dish sessions, and each session is one tissue grown from a task-induced culture medium. The home view presents a petri-dish wall so multiple tissues can be compared by development stage, population, fate distribution, matrix activity, and validation/risk status.
+
+Inside a session, user language is treated as culture-medium exchange. The input changes the environment by emitting morphogens and depositing a matrix record while preserving the same tissue lineage. The central view is a hybrid petri dish: lightly anthropomorphic cells show stage and fate, graph topology overlays show semantic tissue structure, message arcs show communication, and optional layers expose morphogen, matrix, and tool activity.
+
+The frontend should support research interventions without becoming a central supervisor. Clearing a cell, freezing a cell, injecting a morphogen, and approving a tool invocation all pass through the app server and runtime policy surfaces. The cell inspector prioritizes lineage, stage, fate, gene expression, receptors, energy, and local history so users can understand the tissue as a living system rather than a flat agent list.
+
 ### Phase 2 Cell Layer Implementation
 
 The Cell Layer now uses graph topology as the primary position model. A cell position is a `CellPosition` with `node_id`, `region`, `neighbors`, and a three-dimensional `embedding`. The graph node carries the semantic tissue location, such as a repair niche, review boundary, repository subsystem, document section, or resource niche. The three-dimensional embedding is used for visualization and fallback distance estimation.

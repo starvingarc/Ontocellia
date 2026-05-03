@@ -34,6 +34,19 @@ def test_create_session_returns_idle_snapshot(tmp_path: Path) -> None:
     assert payload["snapshot"]["session_id"] == payload["session_id"]
 
 
+def test_project_listing_reads_live_sessions(tmp_path: Path) -> None:
+    client = make_client(tmp_path)
+    session_id = client.post("/sessions", json={}).json()["session_id"]
+    client.post(f"/sessions/{session_id}/task", json={"task": "Fix failing tests."})
+
+    projects = client.get("/projects").json()["projects"]
+    project_sessions = client.get("/projects/local/sessions").json()["sessions"]
+
+    assert projects[0]["id"] == "local"
+    assert projects[0]["session_count"] == 1
+    assert project_sessions[0]["session_id"] == session_id
+
+
 def test_submit_task_induces_tissue_and_writes_artifacts(tmp_path: Path) -> None:
     client = make_client(tmp_path)
     session_id = client.post("/sessions", json={}).json()["session_id"]
@@ -45,6 +58,25 @@ def test_submit_task_induces_tissue_and_writes_artifacts(tmp_path: Path) -> None
     assert snapshot["status"] in {"ready", "ran"}
     assert snapshot["population"] >= 1
     assert (Path(snapshot["session_dir"]) / "session.json").exists()
+
+
+def test_change_medium_updates_tissue_and_broadcasts_traceable_event(tmp_path: Path) -> None:
+    client = make_client(tmp_path)
+    session_id = client.post("/sessions", json={}).json()["session_id"]
+    client.post(f"/sessions/{session_id}/task", json={"task": "Fix failing tests."})
+
+    response = client.post(
+        f"/sessions/{session_id}/change-medium",
+        json={"text": "Add review pressure and repair the failing pytest regression.", "ticks": 1},
+    )
+
+    snapshot = response.json()["snapshot"]
+    trace = client.get(f"/sessions/{session_id}/artifacts/tissue_trace.json").json()
+    matrix = client.get(f"/sessions/{session_id}/matrix").json()["matrix"]
+    assert response.status_code == 200
+    assert snapshot["status"] == "medium_changed"
+    assert any(event["type"] == "medium_changed" for event in trace)
+    assert any(record["kind"] == "medium_change" for record in matrix)
 
 
 def test_run_and_step_update_live_session_views(tmp_path: Path) -> None:
@@ -63,6 +95,48 @@ def test_run_and_step_update_live_session_views(tmp_path: Path) -> None:
     assert "matrix" in client.get(f"/sessions/{session_id}/matrix").json()
     assert "handoffs" in client.get(f"/sessions/{session_id}/handoffs").json()
     assert "tools" in client.get(f"/sessions/{session_id}/tools").json()
+
+
+def test_intervention_can_clear_cell_and_trigger_regeneration_signals(tmp_path: Path) -> None:
+    client = make_client(tmp_path)
+    session_id = client.post("/sessions", json={}).json()["session_id"]
+    client.post(f"/sessions/{session_id}/task", json={"task": "Fix failing tests."})
+    client.post(f"/sessions/{session_id}/run", json={"ticks": 3})
+    agents = client.get(f"/sessions/{session_id}/agents").json()["agents"]
+    target = next(agent for agent in agents if agent["stage"] == "differentiated")
+
+    response = client.post(
+        f"/sessions/{session_id}/interventions",
+        json={"type": "clear_cell", "cell_id": target["id"], "reason": "test_clear"},
+    )
+
+    trace = client.get(f"/sessions/{session_id}/artifacts/tissue_trace.json").json()
+    assert response.status_code == 200
+    assert response.json()["snapshot"]["notice"].startswith("Cleared cell")
+    assert any(event["type"] == "apoptosis" and event["cell_id"] == target["id"] for event in trace)
+
+
+def test_tool_approval_queue_defaults_to_explicit_dry_run(tmp_path: Path) -> None:
+    client = make_client(tmp_path)
+    session_id = client.post("/sessions", json={}).json()["session_id"]
+    client.post(f"/sessions/{session_id}/task", json={"task": "Fix failing tests."})
+    client.post(f"/sessions/{session_id}/run", json={"ticks": 2})
+    pending = client.get(f"/sessions/{session_id}/tool-approvals").json()["pending"]
+    assert pending
+
+    response = client.post(
+        f"/sessions/{session_id}/tool-approvals",
+        json={
+            "action_ids": [pending[0]["action_id"]],
+            "approve": True,
+            "policy": {"allowed_interfaces": [pending[0]["interface"]], "dry_run": True},
+        },
+    )
+
+    tools = client.get(f"/sessions/{session_id}/tools").json()
+    assert response.status_code == 200
+    assert response.json()["results"]
+    assert tools["results"]
 
 
 def test_artifact_endpoint_returns_known_json_and_rejects_unknown(tmp_path: Path) -> None:

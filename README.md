@@ -37,6 +37,14 @@ python -m ontocellia
 
 Type a task in the TUI to induce and run an agent tissue, or use `/setup` to configure model providers first.
 
+For the local app server:
+
+```bash
+python -m ontocellia server
+```
+
+It exposes HTTP/WebSocket APIs for live tissue sessions.
+
 For a deterministic tissue benchmark:
 
 ```bash
@@ -52,6 +60,7 @@ Adaptive benchmark runs and provider baselines are documented in [docs/usage.md]
 - [Communication layer](docs/communication.md)
 - [Architecture](docs/architecture.md)
 - [Design document](docs/agent-tissue-design.md)
+- [Web Lab design concept](docs/web-lab-design.md)
 - [Roadmap](docs/roadmap.md)
 - [Schema reference](docs/schema)
 

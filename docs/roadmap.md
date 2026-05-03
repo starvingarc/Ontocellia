@@ -25,7 +25,8 @@ Ontocellia is being built as a framework-first developmental agent tissue system
 
 ## Next
 
-- Phase 18: Official harness expansion for tau-bench, SWE-bench Lite, Terminal-Bench, and multi-agent collaboration suites.
+- Phase 18: Web Lab petri-dish frontend implementation based on the committed design concept.
+- Phase 19: Official harness expansion for tau-bench, SWE-bench Lite, Terminal-Bench, and multi-agent collaboration suites.
 
 ## Product Direction
 

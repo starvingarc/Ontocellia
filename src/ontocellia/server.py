@@ -9,6 +9,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, PlainTextResponse, Response
 
+from ontocellia.framework.execution import ToolPolicy
 from ontocellia.framework.interactive import InteractiveTissueSession
 from ontocellia.framework.llm import MockLLMProvider
 
@@ -98,6 +99,17 @@ def create_app(
     async def health() -> dict[str, str]:
         return {"status": "ok"}
 
+    @app.get("/projects")
+    async def list_projects() -> dict[str, list[dict[str, Any]]]:
+        sessions = [_snapshot(managed) for managed in manager.list()]
+        return {"projects": [_project_snapshot(manager.output_root, sessions)]}
+
+    @app.get("/projects/{project_id}/sessions")
+    async def list_project_sessions(project_id: str) -> dict[str, Any]:
+        if project_id != "local":
+            raise HTTPException(status_code=404, detail=f"unknown project: {project_id}")
+        return {"project_id": project_id, "sessions": [_snapshot(managed) for managed in manager.list()]}
+
     @app.post("/sessions")
     async def create_session(payload: dict[str, Any] | None = None) -> dict[str, Any]:
         managed = manager.create()
@@ -130,6 +142,25 @@ def create_app(
         await bus.publish_many(session_id, events)
         return {"session_id": managed.id, "snapshot": _snapshot(managed)}
 
+    @app.post("/sessions/{session_id}/change-medium")
+    async def change_medium(session_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        managed = manager.get(session_id)
+        text = str(payload.get("text") or payload.get("task") or "").strip()
+        if not text:
+            raise HTTPException(status_code=400, detail="text is required")
+        ticks = int(payload.get("ticks", 1))
+        snapshot = managed.session.change_medium(text, ticks=max(1, ticks))
+        events = [
+            {
+                "type": "medium_changed",
+                "text": text,
+                "snapshot": snapshot.as_dict(),
+            }
+        ]
+        events.extend(_trace_events(session_id, manager.trace_delta(managed)))
+        await bus.publish_many(session_id, events)
+        return {"session_id": managed.id, "snapshot": _snapshot(managed)}
+
     @app.post("/sessions/{session_id}/run")
     async def run_session(session_id: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
         managed = manager.get(session_id)
@@ -145,6 +176,21 @@ def create_app(
         managed = manager.get(session_id)
         managed.session.step(use_mock=manager.use_mock)
         events = [{"type": "session_update", "snapshot": _snapshot(managed)}]
+        events.extend(_trace_events(session_id, manager.trace_delta(managed)))
+        await bus.publish_many(session_id, events)
+        return {"session_id": managed.id, "snapshot": _snapshot(managed)}
+
+    @app.post("/sessions/{session_id}/interventions")
+    async def intervene(session_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        managed = manager.get(session_id)
+        intervention_type = str(payload.get("type") or "").strip()
+        if not intervention_type:
+            raise HTTPException(status_code=400, detail="type is required")
+        try:
+            snapshot = managed.session.intervene(intervention_type, **{key: value for key, value in payload.items() if key != "type"})
+        except (KeyError, ValueError, TypeError) as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        events = [{"type": "intervention", "intervention": intervention_type, "snapshot": snapshot.as_dict()}]
         events.extend(_trace_events(session_id, manager.trace_delta(managed)))
         await bus.publish_many(session_id, events)
         return {"session_id": managed.id, "snapshot": _snapshot(managed)}
@@ -172,7 +218,33 @@ def create_app(
     @app.get("/sessions/{session_id}/tools")
     async def tools(session_id: str) -> dict[str, Any]:
         managed = manager.get(session_id)
-        return {"session_id": managed.id, "tools": managed.session.tool_invocations(limit=50)}
+        return {
+            "session_id": managed.id,
+            "tools": managed.session.tool_invocations(limit=50),
+            "results": managed.session.tool_results_summary(limit=50),
+        }
+
+    @app.get("/sessions/{session_id}/tool-approvals")
+    async def tool_approvals(session_id: str) -> dict[str, Any]:
+        managed = manager.get(session_id)
+        return {
+            "session_id": managed.id,
+            "pending": [tool for tool in managed.session.tool_invocations(limit=100) if tool.get("approval_status") == "pending"],
+            "results": managed.session.tool_results_summary(limit=100),
+        }
+
+    @app.post("/sessions/{session_id}/tool-approvals")
+    async def approve_tools(session_id: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        managed = manager.get(session_id)
+        data = payload or {}
+        action_ids = [str(item) for item in data.get("action_ids", [])] if data.get("action_ids") else None
+        approve = bool(data.get("approve", True))
+        policy = _tool_policy_from_payload(data["policy"]) if "policy" in data else None
+        results = managed.session.approve_tools(action_ids=action_ids, approve=approve, policy=policy)
+        events = [{"type": "tool_approval", "approved": approve, "results": results, "snapshot": _snapshot(managed)}]
+        events.extend(_trace_events(session_id, manager.trace_delta(managed)))
+        await bus.publish_many(session_id, events)
+        return {"session_id": managed.id, "results": results, "snapshot": _snapshot(managed)}
 
     @app.get("/sessions/{session_id}/artifacts/{name}")
     async def artifact(session_id: str, name: str) -> Response:
@@ -219,4 +291,33 @@ _ALLOWED_ARTIFACTS = {
     "tissue_trace.json",
     "action_intents.json",
     "llm_trace.json",
+    "tool_results.json",
 }
+
+
+def _project_snapshot(output_root: Path, sessions: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "id": "local",
+        "name": Path.cwd().name or "Ontocellia",
+        "root": str(Path.cwd()),
+        "artifact_root": str(output_root),
+        "sessions": sessions,
+        "session_count": len(sessions),
+    }
+
+
+def _tool_policy_from_payload(payload: Any) -> ToolPolicy:
+    data = payload if isinstance(payload, dict) else {}
+    return ToolPolicy(
+        workspace_root=Path(data.get("workspace_root") or Path.cwd()),
+        allowed_interfaces=[str(item) for item in data.get("allowed_interfaces", [])],
+        allowed_commands=[str(item) for item in data.get("allowed_commands", [])],
+        allowed_write_globs=[str(item) for item in data.get("allowed_write_globs", [])],
+        allowed_network_hosts=[str(item) for item in data.get("allowed_network_hosts", [])],
+        allowed_mcp_tools=[str(item) for item in data.get("allowed_mcp_tools", [])],
+        allowed_git_commands=[str(item) for item in data.get("allowed_git_commands", [])],
+        enable_http_tools=bool(data.get("enable_http_tools", False)),
+        enable_browser_tools=bool(data.get("enable_browser_tools", False)),
+        timeout_seconds=float(data.get("timeout_seconds", 60.0)),
+        dry_run=bool(data.get("dry_run", True)),
+    )

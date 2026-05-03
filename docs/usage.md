@@ -64,19 +64,29 @@ Core endpoints:
 
 ```text
 GET  /health
+GET  /projects
+GET  /projects/{project}/sessions
 POST /sessions
 POST /sessions/{id}/task
+POST /sessions/{id}/change-medium
 POST /sessions/{id}/run
 POST /sessions/{id}/step
+POST /sessions/{id}/interventions
 GET  /sessions/{id}/agents
 GET  /sessions/{id}/intents
 GET  /sessions/{id}/matrix
 GET  /sessions/{id}/handoffs
 GET  /sessions/{id}/tools
+GET  /sessions/{id}/tool-approvals
+POST /sessions/{id}/tool-approvals
 WS   /sessions/{id}/events
 ```
 
-The server writes artifacts under `artifacts/server_sessions/<session-id>/`. It uses the mock provider by default; pass `--real-provider` only when you want it to use configured model profiles. WebSocket clients receive an initial snapshot followed by live session and trace events.
+The server writes artifacts under `artifacts/server_sessions/<session-id>/`. It uses the mock provider by default; pass `--real-provider` only when you want it to use configured model profiles. WebSocket clients receive an initial snapshot followed by live session and trace events. The browser Web Lab product direction is documented in [web-lab-design.md](web-lab-design.md).
+
+Natural language entered into an existing session is treated as a culture-medium change. It deposits a matrix record, emits task morphogens, advances the tissue, and preserves the session's lineage rather than replacing the tissue. The first supported interventions are morphogen injection, cell clearing, cell freezing, pause, and resume.
+
+Tool approvals remain safe by default. Pending `ToolInvocation` records can be approved through the API, but approval uses a dry-run policy unless a caller explicitly supplies a stricter project policy with write/command allowlists.
 
 Non-interactive equivalents are available:
 

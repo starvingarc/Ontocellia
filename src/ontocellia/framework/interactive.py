@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from ontocellia.framework.core import TissueRuntime
+from ontocellia.framework.communication import MatrixRecord
 from ontocellia.framework.execution import ExtracellularToolRuntime, ToolPolicy
 from ontocellia.framework.induction import InductionRequest, TemplateInductionCompiler
 from ontocellia.framework.llm import EffectorRuntime, LLMProvider, MockLLMProvider
@@ -59,6 +60,7 @@ class InteractiveTissueSession:
         self.draft: Any | None = None
         self.tissue: TissueRuntime | None = None
         self.actions: list[dict[str, Any]] = []
+        self.tool_results: list[dict[str, Any]] = []
         self.status = "idle"
         self.notice = ""
 
@@ -80,10 +82,109 @@ class InteractiveTissueSession:
         self.tissue = TissueRuntime.seeded(self.draft.genome, self.draft.environment, seed=self.seed)
         self.tissue.develop(ticks=1)
         self.actions = []
+        self.tool_results = []
         self.status = "ready"
         self.notice = "Tissue induced. Use /run or /step to let cells collaborate."
         self._write_artifacts()
         return self.snapshot()
+
+    def change_medium(self, text: str, *, ticks: int = 1) -> InteractiveSessionSnapshot:
+        """Apply a natural-language culture-medium change to the active tissue."""
+        medium = text.strip()
+        if not medium:
+            self.notice = "Culture medium input is empty."
+            return self.snapshot()
+        if self.tissue is None:
+            return self.new_task(medium)
+        signals = _medium_signals(medium)
+        for name, amount in signals.items():
+            self.tissue.environment.morphogens.emit(name, amount)
+        self.tissue.environment.matrix.deposit(
+            MatrixRecord(
+                id=f"medium-{self.tissue.tick_count}-{len(self.tissue.environment.matrix.records)}",
+                source_cell_id=-1,
+                kind="medium_change",
+                content=medium,
+                tags=["medium", "task_change", *sorted(signals)],
+                position={"node_id": "culture-medium", "region": "global"},
+                confidence=0.8,
+                salience=0.85,
+                created_tick=self.tissue.tick_count,
+            )
+        )
+        self.tissue.trace.record("medium_changed", tick=self.tissue.tick_count, text=medium, signals=signals)
+        self.tissue.develop(ticks=max(1, int(ticks)))
+        self.status = "medium_changed"
+        self.notice = "Culture medium changed. Tissue signals and matrix memory were updated."
+        self._write_artifacts()
+        return self.snapshot()
+
+    def intervene(self, intervention_type: str, **payload: Any) -> InteractiveSessionSnapshot:
+        if self.tissue is None:
+            self.status = "idle"
+            self.notice = "Create or select a tissue session before intervening."
+            return self.snapshot()
+        intervention = intervention_type.strip().lower()
+        if intervention in {"emit_morphogen", "inject_morphogen", "morphogen"}:
+            signal = str(payload.get("signal") or "repair_pressure")
+            amount = float(payload.get("amount", 0.5))
+            self.tissue.environment.morphogens.emit(signal, amount)
+            self.tissue.trace.record("intervention", kind="emit_morphogen", signal=signal, amount=amount)
+            self.notice = f"Injected morphogen {signal}."
+        elif intervention in {"clear_cell", "clear"}:
+            cell_id = int(payload.get("cell_id"))
+            self.tissue.clear_cell(cell_id, reason=str(payload.get("reason", "web_lab_clear_cell")))
+            self.notice = f"Cleared cell {cell_id}; regeneration signals were emitted."
+        elif intervention in {"freeze_cell", "freeze"}:
+            cell_id = int(payload.get("cell_id"))
+            cell = self.tissue.cells[cell_id]
+            cell.energy = min(cell.energy, 0.05)
+            cell.record_event("freeze", reason=str(payload.get("reason", "web_lab_freeze_cell")))
+            self.tissue.trace.record("intervention", kind="freeze_cell", cell_id=cell_id)
+            self.notice = f"Froze cell {cell_id} by lowering available energy."
+        elif intervention == "pause":
+            self.status = "paused"
+            self.tissue.trace.record("intervention", kind="pause")
+            self.notice = "Session paused."
+        elif intervention == "resume":
+            self.status = "ready"
+            self.tissue.trace.record("intervention", kind="resume")
+            self.notice = "Session resumed."
+        else:
+            raise ValueError(f"unknown intervention: {intervention_type}")
+        self._write_artifacts()
+        return self.snapshot()
+
+    def approve_tools(self, *, action_ids: list[str] | None = None, policy: ToolPolicy | None = None, approve: bool = True) -> list[dict[str, Any]]:
+        if self.tissue is None:
+            self.notice = "Create a tissue session before approving tools."
+            return []
+        runtime = ExtracellularToolRuntime()
+        actions = self._actions_for_ids(action_ids)
+        if not approve:
+            invocations = runtime.plan_invocations(actions, policy or ToolPolicy())
+            rejected = [
+                {
+                    "invocation": invocation.as_dict(),
+                    "status": "rejected",
+                    "passed": False,
+                    "score": 0.0,
+                    "evidence": "Tool invocation rejected by Web Lab approval queue.",
+                    "changed_files": [],
+                }
+                for invocation in invocations
+            ]
+            for item in rejected:
+                self.tissue.trace.record("tool_approval_rejected", invocation=item["invocation"])
+            self.tool_results.extend(rejected)
+            self._write_artifacts()
+            return rejected
+        selected_policy = policy or _approval_policy_for(actions)
+        results = self.tissue.execute_actions(actions, runtime, selected_policy)
+        serialized = [result.as_dict() for result in results]
+        self.tool_results.extend(serialized)
+        self._write_artifacts()
+        return serialized
 
     def submit_task(self, task: str, *, ticks: int = 2, domain: str = "repo_repair", use_mock: bool = False) -> InteractiveSessionSnapshot:
         self.new_task(task, domain=domain)
@@ -145,6 +246,30 @@ class InteractiveTissueSession:
                 "niche": cell.niche_id or "-",
                 "energy": round(float(cell.energy), 3),
                 "genes": list(cell.expressed_gene_ids),
+                "age": cell.age,
+                "alive": cell.alive,
+                "stress": round(float(cell.stress), 3),
+                "position": {
+                    "node_id": cell.position.node_id,
+                    "region": cell.position.region,
+                    "neighbors": list(cell.position.neighbors),
+                    "embedding": list(cell.position.embedding),
+                },
+                "lineage": {
+                    "parent_id": cell.lineage.parent_id if cell.lineage is not None else cell.lineage_parent,
+                    "root_id": cell.lineage.root_id if cell.lineage is not None else cell.id,
+                    "generation": cell.lineage.generation if cell.lineage is not None else 0,
+                    "events": list(cell.lineage.events[-8:]) if cell.lineage is not None else [],
+                },
+                "receptor": {
+                    "accepted_interfaces": list(cell.receptor.accepted_interfaces),
+                    "signal_sensitivities": dict(cell.receptor.signal_sensitivities),
+                },
+                "adhesion": {
+                    "compatible_fates": list(cell.adhesion.compatible_fates),
+                    "strength": cell.adhesion.strength,
+                },
+                "history": list(cell.history[-8:]),
             }
             for cell in sorted(self.tissue.cells.values(), key=lambda item: item.id)
         ]
@@ -164,7 +289,20 @@ class InteractiveTissueSession:
         if not self.actions:
             return []
         invocations = ExtracellularToolRuntime().plan_invocations(self.actions, ToolPolicy())
-        return [invocation.as_dict() for invocation in invocations[-limit:]]
+        completed_ids = {
+            str(result.get("invocation", {}).get("action_id"))
+            for result in self.tool_results
+            if isinstance(result, dict)
+        }
+        planned = []
+        for invocation in invocations[-limit:]:
+            data = invocation.as_dict()
+            data["approval_status"] = "completed" if invocation.action_id in completed_ids else "pending"
+            planned.append(data)
+        return planned
+
+    def tool_results_summary(self, limit: int = 20) -> list[dict[str, Any]]:
+        return list(self.tool_results[-limit:])
 
     def report(self) -> str:
         if self.tissue is None:
@@ -221,6 +359,7 @@ class InteractiveTissueSession:
             "fate_counts": self.tissue.fate_counts(),
             "niche_occupancy": self.tissue.niche_occupancy(),
             "actions": self.actions,
+            "tool_results": self.tool_results,
             "messages": snapshot["messages"],
             "matrix_records": snapshot["matrix_records"],
             "handoffs": snapshot["handoffs"],
@@ -235,6 +374,7 @@ class InteractiveTissueSession:
             encoding="utf-8",
         )
         (self.session_dir / "action_intents.json").write_text(json.dumps(self.actions, indent=2, sort_keys=True), encoding="utf-8")
+        (self.session_dir / "tool_results.json").write_text(json.dumps(self.tool_results, indent=2, sort_keys=True), encoding="utf-8")
         llm_trace = [event for event in self.tissue.trace.events if event["type"] == "llm_effector"]
         (self.session_dir / "llm_trace.json").write_text(json.dumps(llm_trace, indent=2, sort_keys=True), encoding="utf-8")
 
@@ -247,7 +387,50 @@ class InteractiveTissueSession:
             "proliferation": sum(1 for event in self.tissue.trace.events if event["type"] == "proliferation"),
         }
 
+    def _actions_for_ids(self, action_ids: list[str] | None) -> list[dict[str, Any]]:
+        if not action_ids:
+            return list(self.actions)
+        wanted = {str(action_id) for action_id in action_ids}
+        selected: list[dict[str, Any]] = []
+        for index, action in enumerate(self.actions):
+            action_id = str(action.get("id") or f"action-{index}")
+            if action_id in wanted:
+                selected.append(action)
+        return selected
+
 
 def _session_id(task: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", task.lower()).strip("-")
     return (slug or "untitled")[:48]
+
+
+def _medium_signals(text: str) -> dict[str, float]:
+    lowered = text.lower()
+    signals = {
+        "context_pressure": 0.25,
+        "coordination_pressure": 0.15,
+    }
+    mapping = {
+        "test_failure": ["test", "pytest", "failure", "failing", "regression", "bug", "修复", "失败"],
+        "repair_pressure": ["fix", "repair", "patch", "debug", "修复", "补位"],
+        "review_pressure": ["review", "verify", "risk", "validate", "检查", "验证"],
+        "ambiguity": ["unclear", "unknown", "explore", "research", "不确定", "探索"],
+        "memory_pressure": ["remember", "context", "document", "matrix", "记录", "记忆"],
+        "risk_pressure": ["danger", "risky", "security", "unsafe", "风险", "安全"],
+        "implementation_pressure": ["build", "implement", "change", "feature", "实现"],
+    }
+    for signal, keywords in mapping.items():
+        hits = sum(1 for keyword in keywords if keyword in lowered or keyword in text)
+        if hits:
+            signals[signal] = min(1.0, 0.35 + hits * 0.18)
+    return signals
+
+
+def _approval_policy_for(actions: list[dict[str, Any]]) -> ToolPolicy:
+    runtime = ExtracellularToolRuntime()
+    invocations = runtime.plan_invocations(actions, ToolPolicy())
+    return ToolPolicy(
+        allowed_interfaces=sorted({invocation.interface for invocation in invocations}),
+        allowed_commands=sorted({invocation.command for invocation in invocations if invocation.command}),
+        dry_run=True,
+    )
