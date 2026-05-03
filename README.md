@@ -1,80 +1,69 @@
+<div align="center">
+
 # Ontocellia
 
-Ontocellia is a developmental agent-tissue framework for decentralized, self-organizing, self-repairing multi-agent systems.
+**Grow task-induced agent tissues from a single stem cell.**
 
-Agents are modeled as cells. A single stem-origin cell proliferates and differentiates under a task microenvironment; the resulting tissue uses a shared genome, morphogen field, topology, fate landscape, organ selection layer, and communication matrix to coordinate around the task.
+<em>🧫 One task becomes a culture medium. 🧬 One origin cell becomes a working tissue.</em>
 
-## Core Ideas
+<p>
+  <a href="docs/usage.md"><img alt="Docs" src="https://img.shields.io/badge/docs-usage-5bbfb1?style=flat-square"></a>
+  <img alt="Python" src="https://img.shields.io/badge/python-3.11%2B-2f6f68?style=flat-square">
+  <img alt="Version" src="https://img.shields.io/badge/version-0.2.0-f2b8a8?style=flat-square">
+  <img alt="Status" src="https://img.shields.io/badge/status-research%20prototype-8fb8f7?style=flat-square">
+</p>
 
-- **Genome first:** genes are endogenous control units for expression, validation tendencies, and fate bias.
-- **Single-stem origin:** a task tissue starts from one stem-like cell, expands, then differentiates.
-- **Cells as agents:** each cell carries stage, fate, lineage, receptors, adhesion, energy, and local history.
-- **Task-induced tissue:** morphogens, niches, and topology guide differentiation and clustering.
-- **Weak organ selection:** validation, risk, cost, and coverage become bounded feedback, not central control.
-- **Shared matrix memory:** cells exchange messages, handoffs, and evidence through an extracellular matrix.
-- **Optional effectors and execution:** providers emit structured intents; explicit policies can execute safe local actions.
+<img src="docs/assets/ontocellia-web-lab-concept.png" alt="Ontocellia Web Lab concept visualization" width="960">
 
-## Quick Start
+<p>
+  <sub><strong>Concept visualization</strong> · Soft Lab Console for live agent-tissue sessions.</sub>
+</p>
+
+</div>
+
+## 🧫 Concept
+
+Ontocellia treats multi-agent collaboration as a living tissue rather than a fixed agent graph. A task becomes the culture medium: one stem-origin cell proliferates, differentiates into specialized cells, communicates through an extracellular matrix, and adapts under bounded feedback.
+
+The framework is built around a biological metaphor with practical engineering boundaries: genes express tendencies, cells keep local context, the matrix stores shared evidence, morphogens shape task pressure, organ selection provides weak global feedback, and extracellular interfaces gate tool use.
+
+```text
+task / culture medium
+-> single stem-origin cell
+-> proliferation and differentiation
+-> tissue communication and matrix memory
+-> policy-gated action intents and feedback
+```
+
+## ✨ Highlights
+
+| Layer | Role |
+| --- | --- |
+| **🧬 Genome** | Encodes endogenous gene programs, expression bias, mutation history, and validation hooks. |
+| **🧫 Cell** | Tracks fate, stage, lineage, receptors, adhesion, energy, and local history. |
+| **🌱 Developmental field** | Uses morphogens, graph topology, and fate attractors to shape tissue structure. |
+| **🕸️ Matrix memory** | Keeps shared evidence, messages, handoffs, corrections, and execution feedback. |
+| **🔬 Extracellular tools** | Routes intents through explicit receptor, environment, and policy gates. |
+
+## 🚀 Quick Start
 
 ```bash
 conda env create -f environment.yml
 conda activate ontocellia
-
-python -m ontocellia tissue \
-  --genome-spec examples/framework/repo_repair_genome.yaml \
-  --environment-spec examples/framework/failing_tests_environment.yaml \
-  --steps 4 \
-  --output artifacts/repo_repair_tissue
-```
-
-This writes `tissue_summary.json` and `tissue_trace.json`.
-
-For the interactive tissue TUI:
-
-```bash
 python -m ontocellia
 ```
 
-Type a task in the TUI to induce and run an agent tissue, or use `/setup` to configure model providers first.
+## 🗺️ Explore
 
-For the local app server:
-
-```bash
-python -m ontocellia server
-```
-
-It exposes HTTP/WebSocket APIs for live tissue sessions.
-
-For a deterministic tissue benchmark:
-
-```bash
-python -m ontocellia benchmark
-```
-
-Adaptive benchmark runs and provider baselines are documented in [docs/usage.md](docs/usage.md).
-
-## Documentation
-
-- [Framework overview](docs/framework.md)
-- [Usage guide](docs/usage.md)
-- [Communication layer](docs/communication.md)
+- [Usage](docs/usage.md)
+- [Framework](docs/framework.md)
 - [Architecture](docs/architecture.md)
 - [Design document](docs/agent-tissue-design.md)
-- [Web Lab design concept](docs/web-lab-design.md)
+- [Web Lab concept](docs/web-lab-design.md)
 - [Roadmap](docs/roadmap.md)
-- [Schema reference](docs/schema)
 
-## Examples
-
-- Framework tissue specs: [examples/framework](examples/framework)
-- Ablation experiments: [examples/experiments](examples/experiments)
-- Minimal legacy specs: [examples/specs](examples/specs)
-
-## Development
+## 🛠️ Development
 
 ```bash
-conda activate ontocellia
 python -m pytest -q
 ```
-
-Live LLM tests are opt-in. See [docs/usage.md](docs/usage.md).
