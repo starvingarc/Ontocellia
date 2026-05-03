@@ -72,9 +72,20 @@ class MatrixRecord:
     created_tick: int = 0
     expires_tick: int | None = None
     fate: str | None = None
+    status: str = "active"
+    validation_status: str = "unverified"
+    lineage_id: str | None = None
+    references: list[str] = field(default_factory=list)
+    salience: float = 0.5
+    decay_rate: float = 0.05
+    corrects_record_id: str | None = None
 
     def __post_init__(self) -> None:
         self.position = CellPosition.from_value(self.position)
+        self.references = [str(reference) for reference in self.references]
+        self.confidence = _clamp(self.confidence)
+        self.salience = _clamp(self.salience)
+        self.decay_rate = max(0.0, float(self.decay_rate))
 
     def as_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -115,12 +126,166 @@ class ExtracellularMatrix:
             candidates.sort(key=lambda record: (-record.created_tick, record.id))
         return candidates[:limit]
 
+    def query_context(
+        self,
+        *,
+        tags: list[str] | None = None,
+        fate: str | None = None,
+        position: CellPosition | None = None,
+        topology: TissueTopology | None = None,
+        accepted_interfaces: list[str] | None = None,
+        current_tick: int = 0,
+        lineage_id: str | None = None,
+        policy: "ContextRetrievalPolicy | None" = None,
+    ) -> "ContextPacket":
+        retrieval_policy = policy or ContextRetrievalPolicy()
+        scored = [
+            (record, _context_score(record, tags or [], fate, position, topology, accepted_interfaces or [], current_tick, lineage_id, retrieval_policy))
+            for record in self.records
+            if _context_candidate(record, current_tick, retrieval_policy)
+        ]
+        scored.sort(key=lambda item: (-item[1], -item[0].created_tick, item[0].id))
+        selected: list[dict[str, Any]] = []
+        used_chars = 0
+        for record, score in scored:
+            if len(selected) >= retrieval_policy.limit:
+                break
+            remaining = retrieval_policy.max_context_chars - used_chars
+            if remaining <= 0:
+                break
+            rendered = _context_record_dict(record, score, remaining)
+            used_chars += len(rendered["content"])
+            selected.append(rendered)
+        return ContextPacket(records=selected, max_context_chars=retrieval_policy.max_context_chars, used_chars=used_chars)
+
     def decay(self, current_tick: int) -> None:
         self.records = [
             record
             for record in self.records
             if record.expires_tick is None or record.expires_tick > current_tick
         ]
+        ContextHomeostasisRuntime().decay(self, current_tick=current_tick)
+
+
+@dataclass(slots=True)
+class ContextRetrievalPolicy:
+    limit: int = 5
+    max_context_chars: int = 1600
+    tag_weight: float = 1.0
+    fate_weight: float = 0.8
+    locality_weight: float = 0.7
+    confidence_weight: float = 1.0
+    salience_weight: float = 0.9
+    freshness_weight: float = 0.4
+    validation_weight: float = 0.6
+    interface_weight: float = 0.35
+    include_statuses: list[str] = field(default_factory=lambda: ["active"])
+
+
+@dataclass(slots=True)
+class ContextPacket:
+    records: list[dict[str, Any]]
+    max_context_chars: int
+    used_chars: int = 0
+
+    @property
+    def record_ids(self) -> list[str]:
+        return [str(record["id"]) for record in self.records]
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "records": list(self.records),
+            "record_ids": self.record_ids,
+            "used_chars": self.used_chars,
+            "max_context_chars": self.max_context_chars,
+        }
+
+
+@dataclass(slots=True)
+class ContextHomeostasisRuntime:
+    suppression_threshold: float = 0.05
+
+    def decay(self, matrix: ExtracellularMatrix, *, current_tick: int) -> None:
+        for record in matrix.records:
+            if record.expires_tick is not None and record.expires_tick <= current_tick:
+                continue
+            if record.status != "active":
+                continue
+            age = max(0, current_tick - record.created_tick)
+            if age <= 0 or record.decay_rate <= 0.0:
+                continue
+            factor = max(0.0, 1.0 - record.decay_rate * age)
+            record.confidence = _clamp(record.confidence * factor)
+            record.salience = _clamp(record.salience * factor)
+            if record.confidence <= self.suppression_threshold or record.salience <= self.suppression_threshold:
+                record.status = "suppressed"
+
+    def correct(
+        self,
+        matrix: ExtracellularMatrix,
+        *,
+        record_id: str,
+        correction_id: str,
+        content: str,
+        source_cell_id: int,
+        position: CellPosition | tuple[float, ...] | list[float] | dict[str, Any],
+        created_tick: int = 0,
+    ) -> MatrixRecord:
+        for record in matrix.records:
+            if record.id == record_id:
+                record.status = "corrected"
+                record.validation_status = "contradicted"
+                break
+        correction = MatrixRecord(
+            id=correction_id,
+            source_cell_id=source_cell_id,
+            kind="correction",
+            content=content,
+            tags=["correction"],
+            position=position,
+            confidence=0.8,
+            created_tick=created_tick,
+            status="active",
+            validation_status="validated",
+            references=[record_id],
+            salience=0.9,
+            corrects_record_id=record_id,
+        )
+        matrix.deposit(correction)
+        return correction
+
+    def apply_validation_feedback(
+        self,
+        matrix: ExtracellularMatrix,
+        validation_results: list[Any],
+        *,
+        current_tick: int = 0,
+    ) -> None:
+        for result in validation_results:
+            evidence = str(getattr(result, "evidence", ""))
+            passed = bool(getattr(result, "passed", False))
+            matched = [record for record in matrix.records if evidence and (evidence in record.content or record.content in evidence)]
+            for record in matched:
+                record.validation_status = "validated" if passed else "failed"
+                record.status = "active" if passed else "suppressed"
+                record.salience = _clamp(record.salience + 0.2 if passed else record.salience * 0.5)
+            if matched:
+                matrix.deposit(
+                    MatrixRecord(
+                        id=f"validation-{len(matrix.records) + 1}",
+                        source_cell_id=0,
+                        kind="validation",
+                        content=evidence or str(getattr(result, "name", "validation")),
+                        tags=["validation", "passed" if passed else "failed"],
+                        position=matched[0].position,
+                        confidence=_clamp(float(getattr(result, "score", 0.0))),
+                        created_tick=current_tick,
+                        status="active",
+                        validation_status="validated" if passed else "failed",
+                        references=[record.id for record in matched],
+                        salience=0.85,
+                    )
+                )
 
 
 @dataclass(slots=True)
@@ -130,6 +295,7 @@ class CommunicationPolicy:
     promote_confidence_threshold: float = 0.6
     allow_broadcast: bool = True
     broadcast_limit: int = 8
+    context_budget_chars: int = 1600
 
 
 @dataclass(slots=True)
@@ -230,6 +396,9 @@ class CommunicationRuntime:
             created_tick=message.created_tick,
             expires_tick=None if message.kind == "memory" else message.created_tick + message.ttl,
             fate=getattr(sender, "fate", None),
+            references=list(message.references),
+            lineage_id=str(getattr(getattr(sender, "lineage", None), "root_id", "")) or None,
+            salience=message.confidence,
         )
         tissue.environment.matrix.deposit(record)
         tissue.trace.record("matrix_deposit", **record.as_dict())
@@ -280,3 +449,73 @@ def _matrix_distance(left: CellPosition, right: CellPosition, topology: TissueTo
     if left.region and left.region == right.region:
         return 1.0
     return 10.0
+
+
+def _context_candidate(record: MatrixRecord, current_tick: int, policy: ContextRetrievalPolicy) -> bool:
+    if record.expires_tick is not None and record.expires_tick <= current_tick:
+        return False
+    return record.status in set(policy.include_statuses)
+
+
+def _context_score(
+    record: MatrixRecord,
+    tags: list[str],
+    fate: str | None,
+    position: CellPosition | None,
+    topology: TissueTopology | None,
+    accepted_interfaces: list[str],
+    current_tick: int,
+    lineage_id: str | None,
+    policy: ContextRetrievalPolicy,
+) -> float:
+    wanted_tags = {str(tag) for tag in tags}
+    record_tags = {str(tag) for tag in record.tags}
+    tag_score = len(wanted_tags & record_tags) / max(1, len(wanted_tags)) if wanted_tags else 0.0
+    fate_score = 1.0 if fate and record.fate == fate else 0.25 if fate and record.fate is None else 0.0
+    distance = _matrix_distance(record.position, position, topology) if position is not None else 0.0
+    locality_score = 1.0 / (1.0 + distance)
+    age = max(0, current_tick - record.created_tick)
+    freshness_score = 1.0 / (1.0 + age)
+    validation_score = {
+        "validated": 1.0,
+        "unverified": 0.25,
+        "failed": -0.4,
+        "contradicted": -0.6,
+    }.get(record.validation_status, 0.0)
+    interface_score = 1.0 if set(accepted_interfaces) & record_tags else 0.0
+    lineage_score = 0.2 if lineage_id and record.lineage_id == lineage_id else 0.0
+    return (
+        policy.tag_weight * tag_score
+        + policy.fate_weight * fate_score
+        + policy.locality_weight * locality_score
+        + policy.confidence_weight * record.confidence
+        + policy.salience_weight * record.salience
+        + policy.freshness_weight * freshness_score
+        + policy.validation_weight * validation_score
+        + policy.interface_weight * interface_score
+        + lineage_score
+    )
+
+
+def _context_record_dict(record: MatrixRecord, score: float, max_content_chars: int) -> dict[str, Any]:
+    content = record.content
+    if len(content) > max_content_chars:
+        content = content[: max(0, max_content_chars - 22)] + "\n[context truncated]"
+    return {
+        "id": record.id,
+        "kind": record.kind,
+        "content": content,
+        "tags": list(record.tags),
+        "fate": record.fate,
+        "confidence": record.confidence,
+        "salience": record.salience,
+        "status": record.status,
+        "validation_status": record.validation_status,
+        "references": list(record.references),
+        "lineage_id": record.lineage_id,
+        "score": round(score, 6),
+    }
+
+
+def _clamp(value: float) -> float:
+    return max(0.0, min(1.0, float(value)))

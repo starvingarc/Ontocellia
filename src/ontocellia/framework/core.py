@@ -6,7 +6,7 @@ from random import Random
 from typing import Any
 
 from ontocellia.framework.cell import AgentCell, CellPosition, StemCellState
-from ontocellia.framework.communication import CommunicationPolicy, CommunicationRuntime, ExtracellularMatrix
+from ontocellia.framework.communication import CommunicationPolicy, CommunicationRuntime, ContextHomeostasisRuntime, ExtracellularMatrix
 from ontocellia.framework.fate import FateLandscape
 from ontocellia.framework.genome import AgentGenome, Gene
 from ontocellia.framework.selection import OrganFeedbackSignal, OrganSelectionField, OrganSelectionReport, OrganSelectionTarget, OrganValidationResult
@@ -559,6 +559,8 @@ class TissueRuntime:
         self.environment.morphogens.emit("risk_pressure", report.feedback.risk_pressure)
         self.environment.morphogens.emit("resource_pressure", report.feedback.resource_pressure)
         self.environment.morphogens.emit("reward_signal", report.feedback.reward_signal)
+        if validation_results:
+            ContextHomeostasisRuntime().apply_validation_feedback(self.environment.matrix, validation_results, current_tick=self.tick_count)
         self.trace.record("organ_selection", tick=self.tick_count, **report.as_dict())
 
 

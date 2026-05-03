@@ -24,6 +24,7 @@ from ontocellia.framework import (
     EffectorRuntime,
     ExecutionPolicy,
     ExecutionRuntime,
+    ExtracellularToolRuntime,
     InductionRequest,
     MockLLMProvider,
     MutationCandidateGenerator,
@@ -34,6 +35,7 @@ from ontocellia.framework import (
     TissueRuntime,
     BenchmarkSuite,
     TissueBenchmarkRunner,
+    ToolPolicy,
     ValidationHookPolicy,
     ValidationHookRequest,
     ValidationHookRunner,
@@ -120,6 +122,11 @@ def build_parser() -> argparse.ArgumentParser:
     tissue_parser.add_argument("--allow-interface", action="append", default=[])
     tissue_parser.add_argument("--allow-command", action="append", default=[])
     tissue_parser.add_argument("--allow-write", action="append", default=[])
+    tissue_parser.add_argument("--allow-network-host", action="append", default=[])
+    tissue_parser.add_argument("--allow-mcp-tool", action="append", default=[])
+    tissue_parser.add_argument("--allow-git-command", action="append", default=[])
+    tissue_parser.add_argument("--enable-http-tools", action="store_true")
+    tissue_parser.add_argument("--enable-browser-tools", action="store_true")
     tissue_parser.add_argument("--execution-timeout", type=float, default=60.0)
     tissue_parser.add_argument("--output", type=Path, default=Path("artifacts/tissue"))
 
@@ -173,6 +180,12 @@ def build_parser() -> argparse.ArgumentParser:
     official_run.add_argument("--output", type=Path, default=Path("artifacts/official_benchmarks/bfcl/run"))
 
     subparsers.add_parser("tui", help="Start the interactive Ontocellia TUI.")
+
+    server_parser = subparsers.add_parser("server", help="Start the Ontocellia HTTP/WebSocket app server.")
+    server_parser.add_argument("--host", default="127.0.0.1")
+    server_parser.add_argument("--port", type=int, default=8765)
+    server_parser.add_argument("--output", type=Path, default=Path("artifacts/server_sessions"))
+    server_parser.add_argument("--real-provider", action="store_true", help="Use configured provider profiles instead of mock provider by default.")
 
     config_parser = subparsers.add_parser("config", help="Inspect or edit user configuration.")
     config_subparsers = config_parser.add_subparsers(dest="config_command", required=True)
@@ -290,21 +303,30 @@ def run_tissue(args: argparse.Namespace) -> None:
     )
     effectors = EffectorRuntime(provider) if provider is not None else None
     actions = tissue.execute(effectors=effectors)
+    tool_results = []
+    tool_invocations = []
     execution_results = []
     if args.execute_actions:
-        execution_results = tissue.execute_actions(
+        tool_results = tissue.execute_actions(
             actions,
-            ExecutionRuntime(),
-            ExecutionPolicy(
+            ExtracellularToolRuntime(),
+            ToolPolicy(
                 workspace_root=Path.cwd(),
                 allowed_interfaces=[str(item) for item in args.allow_interface],
                 allowed_commands=[str(item) for item in args.allow_command],
                 allowed_write_globs=[str(item) for item in args.allow_write],
+                allowed_network_hosts=[str(item) for item in args.allow_network_host],
+                allowed_mcp_tools=[str(item) for item in args.allow_mcp_tool],
+                allowed_git_commands=[str(item) for item in args.allow_git_command],
+                enable_http_tools=bool(args.enable_http_tools),
+                enable_browser_tools=bool(args.enable_browser_tools),
                 timeout_seconds=float(args.execution_timeout),
                 dry_run=bool(args.execution_dry_run),
             ),
         )
-        validation_results = [*validation_results, *[result.to_validation_result() for result in execution_results]]
+        tool_invocations = [result.invocation for result in tool_results]
+        execution_results = [result.to_execution_result() for result in tool_results]
+        validation_results = [*validation_results, *[result.to_validation_result() for result in tool_results]]
         tissue.develop(ticks=1, validation_results=validation_results)
     runner_results: list[OrganValidationResult] = []
     if args.run_validation_hooks:
@@ -341,6 +363,13 @@ def run_tissue(args: argparse.Namespace) -> None:
         "executed_actions": sum(1 for result in execution_results if result.status == "passed"),
         "skipped_actions": sum(1 for result in execution_results if result.status in {"skipped", "dry_run"}),
         "changed_files": sorted({path for result in execution_results for path in result.changed_files}),
+        "tool_invocations": len(tool_invocations),
+        "tool_results": len(tool_results),
+        "blocked_tool_invocations": sum(1 for result in tool_results if result.status in {"skipped", "dry_run"}),
+        "tool_adapters": sorted({result.invocation.adapter for result in tool_results}),
+        "mcp_tool_calls": sum(1 for result in tool_results if result.invocation.adapter == "mcp"),
+        "network_tool_calls": sum(1 for result in tool_results if result.invocation.adapter == "http"),
+        "browser_tool_calls": sum(1 for result in tool_results if result.invocation.adapter == "browser"),
     }
     summary_path = args.output / "tissue_summary.json"
     trace_path = args.output / "tissue_trace.json"
@@ -352,6 +381,14 @@ def run_tissue(args: argparse.Namespace) -> None:
             encoding="utf-8",
         )
     if args.execute_actions:
+        (args.output / "tool_invocations.json").write_text(
+            json.dumps([invocation.as_dict() for invocation in tool_invocations], indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        (args.output / "tool_results.json").write_text(
+            json.dumps([result.as_dict() for result in tool_results], indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
         (args.output / "execution_results.json").write_text(
             json.dumps([result.as_dict() for result in execution_results], indent=2, sort_keys=True),
             encoding="utf-8",
@@ -430,6 +467,16 @@ def run_official_benchmark(args: argparse.Namespace) -> None:
         raise SystemExit(str(error)) from error
     print(f"Official benchmark summary written to {result.summary_path}")
     print(f"Official benchmark report written to {result.report_path}")
+
+
+def run_server(args: argparse.Namespace) -> None:
+    import uvicorn
+
+    from ontocellia.server import create_app
+
+    app = create_app(output_root=args.output, use_mock=not bool(args.real_provider))
+    print(f"Ontocellia server listening on http://{args.host}:{args.port}")
+    uvicorn.run(app, host=str(args.host), port=int(args.port))
 
 
 def run_configure(args: argparse.Namespace) -> None:
@@ -725,6 +772,7 @@ def main(argv: list[str] | None = None) -> None:
         "benchmark",
         "official-benchmark",
         "tui",
+        "server",
         "config",
     }
     if args_list and args_list[0] in commands:
@@ -751,6 +799,8 @@ def main(argv: list[str] | None = None) -> None:
             run_official_benchmark(args)
         elif args.command == "tui":
             run_tui()
+        elif args.command == "server":
+            run_server(args)
         elif args.command == "config":
             run_config_command(args)
         return

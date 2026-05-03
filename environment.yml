@@ -11,4 +11,7 @@ dependencies:
   - textual>=8.2
   - pip
   - pip:
+      - fastapi>=0.124
+      - uvicorn>=0.38
+      - httpx>=0.28
       - -e .

@@ -52,6 +52,32 @@ python -m ontocellia tui
 
 The setup flow uses numbered provider and model choices. It stores local model configuration under `~/.ontocellia/`. API keys are stored in `~/.ontocellia/secrets.env` with user-only file permissions when entered through `/setup`.
 
+## App Server
+
+Start the local HTTP/WebSocket server:
+
+```bash
+python -m ontocellia server --host 127.0.0.1 --port 8765
+```
+
+Core endpoints:
+
+```text
+GET  /health
+POST /sessions
+POST /sessions/{id}/task
+POST /sessions/{id}/run
+POST /sessions/{id}/step
+GET  /sessions/{id}/agents
+GET  /sessions/{id}/intents
+GET  /sessions/{id}/matrix
+GET  /sessions/{id}/handoffs
+GET  /sessions/{id}/tools
+WS   /sessions/{id}/events
+```
+
+The server writes artifacts under `artifacts/server_sessions/<session-id>/`. It uses the mock provider by default; pass `--real-provider` only when you want it to use configured model profiles. WebSocket clients receive an initial snapshot followed by live session and trace events.
+
 Non-interactive equivalents are available:
 
 ```bash
@@ -239,7 +265,7 @@ python -m ontocellia official-benchmark run \
 
 ## Execute Action Intents
 
-By default, `tissue` emits intents and communication artifacts without performing local effects. Add `--execute-actions` to route intents through the extracellular execution policy. Dry-run is enabled by default.
+By default, `tissue` emits intents and communication artifacts without performing local effects. Add `--execute-actions` to route intents through the extracellular tool policy. Dry-run is enabled by default.
 
 ```bash
 python -m ontocellia tissue \
@@ -270,6 +296,51 @@ python -m ontocellia tissue \
 ```
 
 Ontocellia does not commit, push, install dependencies, or download benchmark data from the execution layer.
+
+Phase16 also writes:
+
+- `tool_invocations.json`
+- `tool_results.json`
+- `execution_results.json` for compatibility
+
+Additional adapter gates are explicit:
+
+```bash
+python -m ontocellia tissue \
+  --genome-spec examples/framework/repo_repair_genome.yaml \
+  --environment-spec examples/framework/failing_tests_environment.yaml \
+  --effector mock-llm \
+  --execute-actions \
+  --allow-interface mcp:repo:tool:read_file \
+  --allow-mcp-tool mcp:repo:tool:read_file \
+  --allow-interface http.request \
+  --allow-network-host api.example.com \
+  --enable-http-tools \
+  --output artifacts/tool_runtime
+```
+
+MCP, HTTP, and browser adapters are disabled until their specific policy flags are present. Browser support is currently an adapter boundary for future richer automation.
+
+## Inspect Context Homeostasis
+
+Cells receive bounded matrix context instead of the full tissue history. Inspect `tissue_trace.json` for `llm_effector` events:
+
+```json
+{
+  "type": "llm_effector",
+  "context_record_ids": ["execution-1", "matrix-2"]
+}
+```
+
+The corresponding prompt context contains `relevant_matrix`, and the emitted `ActionIntent.payload.context_record_ids` keeps the same references. Matrix records in `tissue_summary.json` and `tissue_trace.json` expose lifecycle fields such as `status`, `validation_status`, `references`, `salience`, and `corrects_record_id`.
+
+Use `communication.context_budget_chars` in an environment spec to tune approximate context size:
+
+```yaml
+communication:
+  matrix_query_limit: 5
+  context_budget_chars: 1600
+```
 
 ## LLM Effectors
 

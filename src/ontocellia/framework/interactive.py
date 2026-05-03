@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from ontocellia.framework.core import TissueRuntime
+from ontocellia.framework.execution import ExtracellularToolRuntime, ToolPolicy
 from ontocellia.framework.induction import InductionRequest, TemplateInductionCompiler
 from ontocellia.framework.llm import EffectorRuntime, LLMProvider, MockLLMProvider
 from ontocellia.framework.model_config import load_user_config, resolve_effector_provider
@@ -63,8 +64,9 @@ class InteractiveTissueSession:
 
     def new_task(self, task: str, *, domain: str = "repo_repair") -> InteractiveSessionSnapshot:
         self.task = task.strip()
-        self.session_id = _session_id(self.task)
-        self.session_dir = self.output_root / self.session_id
+        self.session_id = self.session_id or _session_id(self.task)
+        if self.session_dir == self.output_root:
+            self.session_dir = self.output_root / self.session_id
         self.session_dir.mkdir(parents=True, exist_ok=True)
         self.draft = TemplateInductionCompiler().compile(
             InductionRequest(
@@ -157,6 +159,12 @@ class InteractiveTissueSession:
         if self.tissue is None:
             return []
         return [event for event in self.tissue.trace.events if event["type"].startswith("handoff")][-limit:]
+
+    def tool_invocations(self, limit: int = 8) -> list[dict[str, Any]]:
+        if not self.actions:
+            return []
+        invocations = ExtracellularToolRuntime().plan_invocations(self.actions, ToolPolicy())
+        return [invocation.as_dict() for invocation in invocations[-limit:]]
 
     def report(self) -> str:
         if self.tissue is None:

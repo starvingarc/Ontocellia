@@ -41,6 +41,12 @@ Validation hooks remain metadata until the opt-in Validation Hook Runner is enab
 
 Cells communicate with `TissueMessage` objects and durable `MatrixRecord` entries. Direct, local, fate-scoped, and broadcast messages support short-term coordination. The shared extracellular matrix stores evidence, memory, hypotheses, validation notes, and handoff context.
 
+## Context Homeostasis
+
+Context is managed through the shared extracellular matrix rather than a single prompt history. Matrix records carry lifecycle state, validation state, references, salience, decay, lineage, and correction links. Cells receive a bounded `ContextPacket` assembled by deterministic retrieval over tags, fate, graph locality, confidence, freshness, validation status, and receptor/interface relevance.
+
+`CellPromptBuilder` includes the packet as `relevant_matrix` and records `context_record_ids` in every LLM effector trace and emitted `ActionIntent`. Execution and validation results deposit evidence back into the matrix, where stale weak hypotheses decay and contradicted records can be corrected or suppressed.
+
 ## MCP Adapter
 
 MCP is modeled as an extracellular interface implementation detail. MCP tools become membrane-channel interfaces, MCP resources seed extracellular matrix records, MCP prompts become induction-factor interfaces, and tool results can deposit matrix evidence plus returned morphogen signals. Phase8 does not start external MCP processes or call network tools.
@@ -63,11 +69,13 @@ The official benchmark harness evaluates Ontocellia as an adaptive tissue, not a
 
 BFCL remains available as a provider/tool-call baseline because simple function calling is usually solved well by the underlying model alone. Ontocellia's main benchmark path targets harder collaborative settings such as tau-bench, Terminal-Bench, MultiAgentBench/MARBLE-style tasks, and SWE-bench-style repo repair.
 
-## Extracellular Execution
+## Extracellular Tool Runtime
 
-The execution layer sits between structured `ActionIntent` records and real local effects. It supports workspace reads/search, dry-run patch proposals, allowlisted patch application, `git diff`, allowlisted pytest commands, and allowlisted shell commands. Every execution creates an `ExecutionResult`, records trace events, deposits evidence into the extracellular matrix, and can be converted into an `OrganValidationResult`.
+The tool runtime sits between structured `ActionIntent` records and real local effects. It normalizes intents into `ToolInvocation` records, routes them through adapter-specific executors, and returns `ToolResult` records. The older `ExecutionRuntime` API remains as a compatibility wrapper.
 
-Execution is opt-in. Dry-run is the default, and write or shell actions require explicit interface, command, and path allowlists.
+Supported adapter surfaces include workspace read/search/list/patch, git read commands, validation commands, exact allowlisted shell commands, declared MCP tools, allowlisted HTTP/API requests, and an optional browser adapter boundary. Every tool result records trace events, deposits evidence into the extracellular matrix, and can be converted into organ-selection validation feedback.
+
+Execution is opt-in. Dry-run is the default; writes, shell commands, MCP calls, HTTP/API requests, and browser actions require explicit policy allowlists.
 
 ## Effectors
 
@@ -77,4 +85,10 @@ Effectors translate expressed gene programs into structured actions. The default
 
 The model configuration layer keeps provider selection outside the genome. `ontocellia` without arguments starts a Textual/Rich Soft Lab Console TUI for configuring model profiles, inducing task tissues, observing agents, and inspecting intents, matrix records, handoffs, and reports. User config lives under `~/.ontocellia/`; traces record provider/profile/model metadata without recording API keys.
 
-The TUI is an observation and orchestration surface. Cells emit structured `ActionIntent` records and communicate through the shared matrix; real execution remains behind the explicit extracellular execution policy.
+The TUI is an observation and orchestration surface. Cells emit structured `ActionIntent` records and communicate through the shared matrix; planned tool invocations are visible, while real execution remains behind the explicit extracellular tool policy.
+
+## Living Tissue App Server
+
+The app server exposes live tissue sessions over local HTTP and WebSocket APIs. It wraps `InteractiveTissueSession`, stores artifacts under `artifacts/server_sessions`, and streams session snapshots plus trace-derived events for induction, development, intents, messages, matrix deposits, handoffs, tool invocations, and organ feedback.
+
+The first server version is a local development surface. It binds to `127.0.0.1` by default, uses the mock provider unless configured otherwise, and does not execute tools unless the existing explicit tool policy is used by a caller.

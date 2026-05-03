@@ -155,6 +155,7 @@ def _communication_policy(data: Any) -> CommunicationPolicy:
         promote_confidence_threshold=float(data.get("promote_confidence_threshold", 0.6)),
         allow_broadcast=bool(data.get("allow_broadcast", True)),
         broadcast_limit=int(data.get("broadcast_limit", 8)),
+        context_budget_chars=int(data.get("context_budget_chars", 1600)),
     )
 
 
@@ -173,6 +174,13 @@ def _matrix(data: Any) -> ExtracellularMatrix:
             created_tick=int(record.get("created_tick", 0)),
             expires_tick=record.get("expires_tick"),
             fate=str(record["fate"]) if "fate" in record else None,
+            status=str(record.get("status", "active")),
+            validation_status=str(record.get("validation_status", "unverified")),
+            lineage_id=str(record["lineage_id"]) if "lineage_id" in record else None,
+            references=[str(reference) for reference in record.get("references", [])],
+            salience=float(record.get("salience", 0.5)),
+            decay_rate=float(record.get("decay_rate", 0.05)),
+            corrects_record_id=str(record["corrects_record_id"]) if "corrects_record_id" in record else None,
         )
         for index, record in enumerate(data.get("records", []))
     ]

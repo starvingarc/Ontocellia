@@ -14,6 +14,8 @@ dependencies = [
   "numpy>=2.3",
   "PyYAML>=6.0",
   "textual>=8.2",
+  "fastapi>=0.124",
+  "uvicorn>=0.38",
 ]
 
 [project.scripts]
@@ -23,6 +25,7 @@ ontocellia-demo = "ontocellia.__main__:main"
 [project.optional-dependencies]
 dev = [
   "pytest>=9.0",
+  "httpx>=0.28",
 ]
 
 [tool.setuptools]

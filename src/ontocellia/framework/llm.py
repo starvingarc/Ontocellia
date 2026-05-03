@@ -7,6 +7,8 @@ import urllib.request
 from dataclasses import asdict, dataclass, field
 from typing import Any, Callable, Protocol
 
+from ontocellia.framework.communication import ContextRetrievalPolicy
+
 
 @dataclass(slots=True)
 class ActionIntent:
@@ -49,6 +51,9 @@ class LLMProvider(Protocol):
 
 
 class CellPromptBuilder:
+    def __init__(self, retrieval_policy: ContextRetrievalPolicy | None = None):
+        self.retrieval_policy = retrieval_policy
+
     def build(self, tissue: Any, cell: Any) -> CellPrompt:
         programs = [tissue.genome.gene_by_id(gene_id) for gene_id in cell.expressed_gene_ids]
         allowed_interfaces = [
@@ -59,6 +64,21 @@ class CellPromptBuilder:
         validation_hooks: list[str] = []
         for program in programs:
             validation_hooks.extend(program.validation_hooks)
+        retrieval_policy = self.retrieval_policy or ContextRetrievalPolicy(
+            limit=int(getattr(tissue.environment.communication_policy, "matrix_query_limit", 5)),
+            max_context_chars=int(getattr(tissue.environment.communication_policy, "context_budget_chars", 1600)),
+        )
+        lineage_id = str(cell.lineage.root_id) if getattr(cell, "lineage", None) is not None else None
+        context_packet = tissue.environment.matrix.query_context(
+            fate=cell.fate,
+            position=cell.position,
+            topology=tissue.environment.topology,
+            tags=_context_tags(cell.fate, cell.expressed_gene_ids, [gene.category for gene in programs]),
+            accepted_interfaces=allowed_interfaces,
+            current_tick=int(getattr(tissue, "tick_count", 0)),
+            lineage_id=lineage_id,
+            policy=retrieval_policy,
+        )
         return CellPrompt(
             system="You are an Ontocellia cell effector. Translate expressed genes into one structured action intent.",
             context={
@@ -77,6 +97,8 @@ class CellPromptBuilder:
                 "encoded_responses": [response for gene in programs for response in gene.encoded_response],
                 "allowed_interfaces": allowed_interfaces,
                 "validation_hooks": validation_hooks,
+                "relevant_matrix": list(context_packet.records),
+                "context_record_ids": context_packet.record_ids,
             },
             output_schema={
                 "type": "ActionIntent",
@@ -216,6 +238,8 @@ class EffectorRuntime:
             intent.required_interfaces = [
                 interface_id for interface_id in intent.required_interfaces if interface_id in prompt.context["allowed_interfaces"]
             ]
+            context_record_ids = [str(record_id) for record_id in prompt.context.get("context_record_ids", [])]
+            intent.payload = {**dict(intent.payload), "context_record_ids": context_record_ids}
             tissue.trace.record(
                 "llm_effector",
                 cell_id=cell.id,
@@ -223,6 +247,7 @@ class EffectorRuntime:
                 model=response.model,
                 prompt={"system": prompt.system, "context": prompt.context, "output_schema": prompt.output_schema},
                 intent=intent.as_dict(),
+                context_record_ids=context_record_ids,
                 usage=response.usage,
             )
             intents.append(intent)
@@ -252,6 +277,19 @@ def _required_interfaces(intent_type: str, allowed: list[str]) -> list[str]:
     preferred = preferences.get(intent_type, allowed)
     selected = [interface_id for interface_id in preferred if interface_id in allowed]
     return selected or allowed[:1]
+
+
+def _context_tags(fate: str, gene_ids: list[str], categories: list[str]) -> list[str]:
+    tags = [fate, *gene_ids, *categories]
+    fate_tags = {
+        "repair": ["test_failure", "repair_pressure", "validation_pressure", "execution", "workspace", "pytest"],
+        "reviewer": ["review", "validation", "risk", "execution", "git", "pytest"],
+        "explorer": ["ambiguity", "missing_context", "workspace", "observation", "hypothesis"],
+        "planner": ["policy", "constraint", "coordination", "handoff"],
+        "memory": ["memory", "handoff", "observation"],
+    }
+    tags.extend(fate_tags.get(fate, []))
+    return list(dict.fromkeys(str(tag) for tag in tags if tag))
 
 
 def _provider_defaults(name: str) -> dict[str, object]:

@@ -298,7 +298,27 @@ The Phase6 runtime records communication as trace events:
 - `handoff_requested`
 - `handoff_completed`
 
-The tissue summary exposes message, matrix, and handoff counts. MCP, shell, and validation execution remain separate extracellular interface work for later phases.
+The tissue summary exposes message, matrix, and handoff counts. Tool execution is handled by the extracellular tool runtime, which keeps real effects behind receptor, interface, and policy gates.
+
+### Extracellular Tool Runtime
+
+Cells produce structured `ActionIntent` records; they do not directly mutate files, call APIs, or invoke shell commands. The extracellular tool runtime translates those intents into `ToolInvocation` records and routes them through controlled adapter surfaces:
+
+- workspace read, search, list, and patch
+- git status, diff, show, and log
+- validation commands such as pytest
+- exact allowlisted shell commands
+- declared MCP tools
+- allowlisted HTTP/API requests
+- optional browser adapter boundary
+
+Every invocation must pass the cell receptor gate, the environment interface gate, and the runtime policy gate. Results become `ToolResult` records, deposit evidence into the extracellular matrix, and can feed organ selection as validation feedback. This keeps tools biologically positioned as membrane channels and extracellular substrates rather than genes or cell identity.
+
+### Living Tissue App Server
+
+The app server is the live culture surface for non-terminal clients. It wraps interactive tissue sessions behind HTTP endpoints and a WebSocket event stream. A client can create a tissue session, submit a natural language task, advance ticks, inspect cells, read matrix records, inspect tool invocations, and subscribe to live events.
+
+The server is an observation and orchestration membrane rather than a new supervisor. It does not change cell fate, genome expression, context homeostasis, or tool policy semantics. It streams what the tissue already produces: induction events, development trace entries, action intents, communication, matrix deposits, handoffs, tool results, and organ feedback.
 
 ### Phase 2 Cell Layer Implementation
 

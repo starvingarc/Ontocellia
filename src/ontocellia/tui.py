@@ -113,6 +113,8 @@ class OntocelliaTUI(App[None]):
                 yield Static("", id="matrix-view")
             with TabPane("Handoffs", id="handoffs"):
                 yield Static("", id="handoff-view")
+            with TabPane("Tools", id="tools"):
+                yield Static("", id="tool-view")
             with TabPane("Report", id="report"):
                 yield Static("", id="report-view")
         yield Input(placeholder="task to culture, or /help", id="command-input")
@@ -186,7 +188,7 @@ class OntocelliaTUI(App[None]):
         elif command == "step":
             snapshot = self.session.step(use_mock=self.use_mock)
             self._log(snapshot.notice)
-        elif command in {"agents", "intents", "matrix", "handoffs", "report", "config"}:
+        elif command in {"agents", "intents", "matrix", "handoffs", "tools", "report", "config"}:
             self._log(f"view: {command}")
         else:
             self._log(f"unknown command: /{command}")
@@ -199,7 +201,7 @@ class OntocelliaTUI(App[None]):
 
     def _show_help(self) -> None:
         self._log(
-            "commands: /new <task>, /run [ticks], /step, /agents, /intents, /matrix, /handoffs, /report, /models, /mock, /setup, /clear, /exit"
+            "commands: /new <task>, /run [ticks], /step, /agents, /intents, /matrix, /handoffs, /tools, /report, /models, /mock, /setup, /clear, /exit"
         )
 
     def _refresh(self) -> None:
@@ -211,6 +213,7 @@ class OntocelliaTUI(App[None]):
         self.query_one("#intent-view", Static).update(_intents(self.session.actions))
         self.query_one("#matrix-view", Static).update(_matrix(self.session.matrix_records()))
         self.query_one("#handoff-view", Static).update(_handoffs(self.session.handoffs()))
+        self.query_one("#tool-view", Static).update(_tools(self.session.tool_invocations()))
         self.query_one("#report-view", Static).update(self.session.report())
 
     def _refresh_agents(self) -> None:
@@ -294,6 +297,17 @@ def _handoffs(events: list[dict[str, Any]]) -> str:
     if not events:
         return "No handoffs yet."
     return "\n".join(str(event) for event in events)
+
+
+def _tools(invocations: list[dict[str, Any]]) -> str:
+    if not invocations:
+        return "No tool invocations planned yet. Tool execution stays behind explicit CLI policy."
+    lines = []
+    for invocation in invocations:
+        lines.append(
+            f"{invocation.get('id')} | {invocation.get('adapter')}:{invocation.get('operation')} | {invocation.get('interface')} -> {invocation.get('target')}"
+        )
+    return "\n".join(lines)
 
 
 def _models_text() -> str:

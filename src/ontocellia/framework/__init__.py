@@ -26,6 +26,9 @@ from .cell import (
 from .communication import (
     CommunicationPolicy,
     CommunicationRuntime,
+    ContextHomeostasisRuntime,
+    ContextPacket,
+    ContextRetrievalPolicy,
     ExtracellularMatrix,
     HandoffReceipt,
     HandoffRequest,
@@ -34,7 +37,7 @@ from .communication import (
     TissueMessage,
 )
 from .demo import DemoResult, run_repo_repair_demo
-from .execution import ExecutionPolicy, ExecutionRequest, ExecutionResult, ExecutionRuntime
+from .execution import ExecutionPolicy, ExecutionRequest, ExecutionResult, ExecutionRuntime, ExtracellularToolRuntime, ToolInvocation, ToolPolicy, ToolResult
 from .genome import AgentGenome, EpigeneticMarks, ExpressedGeneProgram, ExpressionContext, Gene, LineageMutation, RegulatoryElement
 from .fate import FateAttractor, FateDecision, FateLandscape
 from .induction import InductionDraft, InductionRequest, TemplateInductionCompiler
@@ -66,6 +69,9 @@ __all__ = [
     "CompetenceProfile",
     "CommunicationPolicy",
     "CommunicationRuntime",
+    "ContextHomeostasisRuntime",
+    "ContextPacket",
+    "ContextRetrievalPolicy",
     "DifferentiatedCellState",
     "DemoResult",
     "EffectorRuntime",
@@ -78,6 +84,7 @@ __all__ = [
     "ExecutionRequest",
     "ExecutionResult",
     "ExecutionRuntime",
+    "ExtracellularToolRuntime",
     "FateAttractor",
     "FateDecision",
     "FateLandscape",
@@ -129,6 +136,9 @@ __all__ = [
     "TissueTrace",
     "TissueTopology",
     "TissueMessage",
+    "ToolInvocation",
+    "ToolPolicy",
+    "ToolResult",
     "TopologyNode",
     "TransitAmplifyingCellState",
     "ValidationHookPolicy",
