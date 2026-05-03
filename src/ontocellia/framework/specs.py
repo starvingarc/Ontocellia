@@ -6,7 +6,7 @@ from typing import Any
 import yaml
 
 from ontocellia.framework.cell import CellPosition
-from ontocellia.framework.communication import CommunicationPolicy, ExtracellularMatrix, MatrixRecord
+from ontocellia.framework.communication import CommunicationPolicy, ContextMetabolismPolicy, ExtracellularMatrix, MatrixRecord
 from ontocellia.framework.core import ExtracellularInterface, MorphogenField, MorphogenSource, Niche, TaskMicroenvironment
 from ontocellia.framework.fate import FateAttractor, FateLandscape
 from ontocellia.framework.genome import AgentGenome, EpigeneticMarks, Gene, RegulatoryElement
@@ -156,6 +156,20 @@ def _communication_policy(data: Any) -> CommunicationPolicy:
         allow_broadcast=bool(data.get("allow_broadcast", True)),
         broadcast_limit=int(data.get("broadcast_limit", 8)),
         context_budget_chars=int(data.get("context_budget_chars", 1600)),
+        context_metabolism=_context_metabolism_policy(data.get("context_metabolism")),
+    )
+
+
+def _context_metabolism_policy(data: Any) -> ContextMetabolismPolicy:
+    if not isinstance(data, dict):
+        return ContextMetabolismPolicy()
+    return ContextMetabolismPolicy(
+        enabled=bool(data.get("enabled", True)),
+        window_ticks=int(data.get("window_ticks", 3)),
+        max_metabolites_per_tick=int(data.get("max_metabolites_per_tick", 4)),
+        max_metabolite_chars=int(data.get("max_metabolite_chars", 700)),
+        min_source_records=int(data.get("min_source_records", 2)),
+        source_salience_decay=float(data.get("source_salience_decay", 0.15)),
     )
 
 
@@ -181,6 +195,7 @@ def _matrix(data: Any) -> ExtracellularMatrix:
             salience=float(record.get("salience", 0.5)),
             decay_rate=float(record.get("decay_rate", 0.05)),
             corrects_record_id=str(record["corrects_record_id"]) if "corrects_record_id" in record else None,
+            metadata=dict(record.get("metadata", {})),
         )
         for index, record in enumerate(data.get("records", []))
     ]

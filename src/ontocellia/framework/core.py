@@ -6,7 +6,7 @@ from random import Random
 from typing import Any
 
 from ontocellia.framework.cell import AgentCell, CellPosition, StemCellState
-from ontocellia.framework.communication import CommunicationPolicy, CommunicationRuntime, ContextHomeostasisRuntime, ExtracellularMatrix
+from ontocellia.framework.communication import CommunicationPolicy, CommunicationRuntime, ContextHomeostasisRuntime, ContextMetabolismRuntime, ExtracellularMatrix
 from ontocellia.framework.fate import FateLandscape
 from ontocellia.framework.genome import AgentGenome, Gene
 from ontocellia.framework.selection import OrganFeedbackSignal, OrganSelectionField, OrganSelectionReport, OrganSelectionTarget, OrganValidationResult
@@ -227,6 +227,7 @@ class TissueRuntime:
             self._update_cell_positions()
             self._age_cells()
             self._apply_organ_selection(validation_results)
+            self._apply_context_metabolism()
             self.environment.morphogens.decay()
             self._update_development_stage()
             self.trace.record(
@@ -562,6 +563,11 @@ class TissueRuntime:
         if validation_results:
             ContextHomeostasisRuntime().apply_validation_feedback(self.environment.matrix, validation_results, current_tick=self.tick_count)
         self.trace.record("organ_selection", tick=self.tick_count, **report.as_dict())
+
+    def _apply_context_metabolism(self) -> None:
+        if not hasattr(self.environment, "matrix") or not hasattr(self.environment, "communication_policy"):
+            return
+        ContextMetabolismRuntime().metabolize(self)
 
 
 def _embedding_distance(left: tuple[float, float, float], right: tuple[float, float, float]) -> float:

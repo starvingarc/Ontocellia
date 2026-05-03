@@ -47,6 +47,14 @@ Context is managed through the shared extracellular matrix rather than a single 
 
 `CellPromptBuilder` includes the packet as `relevant_matrix` and records `context_record_ids` in every LLM effector trace and emitted `ActionIntent`. Execution and validation results deposit evidence back into the matrix, where stale weak hypotheses decay and contradicted records can be corrected or suppressed.
 
+## Context Metabolism
+
+Context metabolism is the tissue's matrix-remodeling system. Instead of repeatedly summarizing the whole history, the runtime deterministically digests recent matrix records, trace events, execution evidence, validation feedback, constraints, and contradicted records into higher-order metabolite `MatrixRecord` entries.
+
+The first metabolites are `failure_signature`, `episode_summary`, `causal_chain`, `constraint_digest`, and `toxic_context`. They preserve source record IDs, source trace event IDs, compression level, lossiness, source count, and scope in record metadata. Source records are not deleted; their salience is weakly reduced so retrieval prefers compact metabolites while keeping raw evidence inspectable.
+
+`TissueRuntime.develop()` runs metabolism after organ selection and validation feedback, then before matrix decay. `CellPromptBuilder` keeps the legacy `relevant_matrix` section and also exposes `context_metabolites` plus `raw_context_record_ids`, so LLM effectors can distinguish synthesized context from raw evidence.
+
 ## MCP Adapter
 
 MCP is modeled as an extracellular interface implementation detail. MCP tools become membrane-channel interfaces, MCP resources seed extracellular matrix records, MCP prompts become induction-factor interfaces, and tool results can deposit matrix evidence plus returned morphogen signals. Phase8 does not start external MCP processes or call network tools.

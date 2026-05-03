@@ -79,6 +79,12 @@ class CellPromptBuilder:
             lineage_id=lineage_id,
             policy=retrieval_policy,
         )
+        context_metabolites = [
+            record for record in context_packet.records if record.get("metadata", {}).get("metabolite_kind")
+        ]
+        raw_context_record_ids = [
+            str(record["id"]) for record in context_packet.records if not record.get("metadata", {}).get("metabolite_kind")
+        ]
         return CellPrompt(
             system="You are an Ontocellia cell effector. Translate expressed genes into one structured action intent.",
             context={
@@ -99,6 +105,8 @@ class CellPromptBuilder:
                 "validation_hooks": validation_hooks,
                 "relevant_matrix": list(context_packet.records),
                 "context_record_ids": context_packet.record_ids,
+                "context_metabolites": context_metabolites,
+                "raw_context_record_ids": raw_context_record_ids,
             },
             output_schema={
                 "type": "ActionIntent",

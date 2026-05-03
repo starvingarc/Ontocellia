@@ -342,14 +342,49 @@ Cells receive bounded matrix context instead of the full tissue history. Inspect
 }
 ```
 
-The corresponding prompt context contains `relevant_matrix`, and the emitted `ActionIntent.payload.context_record_ids` keeps the same references. Matrix records in `tissue_summary.json` and `tissue_trace.json` expose lifecycle fields such as `status`, `validation_status`, `references`, `salience`, and `corrects_record_id`.
+The corresponding prompt context contains `relevant_matrix`, and the emitted `ActionIntent.payload.context_record_ids` keeps the same references. Matrix records in `tissue_summary.json` and `tissue_trace.json` expose lifecycle fields such as `status`, `validation_status`, `references`, `salience`, `corrects_record_id`, and `metadata`.
 
-Use `communication.context_budget_chars` in an environment spec to tune approximate context size:
+Context metabolism runs during development after validation and organ feedback. It deposits compact metabolite records into the matrix while preserving raw evidence. Look for `context_metabolite_deposited` and `context_metabolism` events:
+
+```json
+{
+  "type": "context_metabolite_deposited",
+  "kind": "context_metabolite",
+  "metadata": {
+    "metabolite_kind": "failure_signature",
+    "source_record_ids": ["validation-1", "execution-2"],
+    "source_trace_event_ids": ["trace:12"],
+    "compression_level": "metabolite",
+    "lossiness": "bounded",
+    "source_count": 2,
+    "scope": "validation"
+  }
+}
+```
+
+Prompt context keeps compatibility while separating synthesized and raw context:
+
+```json
+{
+  "relevant_matrix": [{ "id": "context-failure_signature-1" }],
+  "context_metabolites": [{ "id": "context-failure_signature-1" }],
+  "raw_context_record_ids": ["validation-1", "execution-2"]
+}
+```
+
+Use `communication.context_budget_chars` and `communication.context_metabolism` in an environment spec to tune approximate context size and matrix remodeling:
 
 ```yaml
 communication:
   matrix_query_limit: 5
   context_budget_chars: 1600
+  context_metabolism:
+    enabled: true
+    window_ticks: 3
+    max_metabolites_per_tick: 4
+    max_metabolite_chars: 700
+    min_source_records: 2
+    source_salience_decay: 0.15
 ```
 
 ## LLM Effectors

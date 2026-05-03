@@ -79,10 +79,12 @@ class MatrixRecord:
     salience: float = 0.5
     decay_rate: float = 0.05
     corrects_record_id: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         self.position = CellPosition.from_value(self.position)
         self.references = [str(reference) for reference in self.references]
+        self.metadata = dict(self.metadata)
         self.confidence = _clamp(self.confidence)
         self.salience = _clamp(self.salience)
         self.decay_rate = max(0.0, float(self.decay_rate))
@@ -140,7 +142,20 @@ class ExtracellularMatrix:
     ) -> "ContextPacket":
         retrieval_policy = policy or ContextRetrievalPolicy()
         scored = [
-            (record, _context_score(record, tags or [], fate, position, topology, accepted_interfaces or [], current_tick, lineage_id, retrieval_policy))
+            (
+                record,
+                _context_score(
+                    record,
+                    tags or [],
+                    fate,
+                    position,
+                    topology,
+                    accepted_interfaces or [],
+                    current_tick,
+                    lineage_id,
+                    retrieval_policy,
+                ),
+            )
             for record in self.records
             if _context_candidate(record, current_tick, retrieval_policy)
         ]
@@ -289,6 +304,116 @@ class ContextHomeostasisRuntime:
 
 
 @dataclass(slots=True)
+class ContextMetabolismPolicy:
+    enabled: bool = True
+    window_ticks: int = 3
+    max_metabolites_per_tick: int = 4
+    max_metabolite_chars: int = 700
+    min_source_records: int = 2
+    source_salience_decay: float = 0.15
+
+
+@dataclass(slots=True)
+class ContextMetabolismReport:
+    deposited_record_ids: list[str] = field(default_factory=list)
+    source_record_ids: list[str] = field(default_factory=list)
+    metabolite_counts: dict[str, int] = field(default_factory=dict)
+
+    def as_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(slots=True)
+class ContextMetabolismRuntime:
+    """Deterministic matrix remodeling and context condensation."""
+
+    def metabolize(self, tissue: Any) -> ContextMetabolismReport:
+        policy = getattr(getattr(tissue.environment, "communication_policy", None), "context_metabolism", ContextMetabolismPolicy())
+        report = ContextMetabolismReport()
+        if not policy.enabled or policy.max_metabolites_per_tick <= 0:
+            return report
+        matrix = tissue.environment.matrix
+        current_tick = int(getattr(tissue, "tick_count", 0))
+        source_records = [record for record in matrix.records if not _is_metabolite(record)]
+        recent_records = [
+            record
+            for record in source_records
+            if record.created_tick >= current_tick - max(0, policy.window_ticks)
+        ]
+        trace_events = list(getattr(getattr(tissue, "trace", None), "events", []))
+        candidates = [
+            self._candidate("failure_signature", _failure_sources(recent_records), tissue, policy),
+            self._candidate("causal_chain", _causal_sources(recent_records), tissue, policy, trace_events=trace_events),
+            self._candidate("constraint_digest", _constraint_sources(recent_records), tissue, policy),
+            self._candidate("toxic_context", _toxic_sources(source_records), tissue, policy),
+            self._candidate("episode_summary", _episode_sources(recent_records), tissue, policy, trace_events=trace_events),
+        ]
+        for candidate in candidates:
+            if candidate is None:
+                continue
+            if len(report.deposited_record_ids) >= policy.max_metabolites_per_tick:
+                break
+            if _metabolite_exists(matrix.records, candidate.metadata["metabolite_kind"], candidate.metadata["source_record_ids"]):
+                continue
+            matrix.deposit(candidate)
+            report.deposited_record_ids.append(candidate.id)
+            report.source_record_ids.extend(candidate.metadata["source_record_ids"])
+            kind = str(candidate.metadata["metabolite_kind"])
+            report.metabolite_counts[kind] = report.metabolite_counts.get(kind, 0) + 1
+            _decay_sources(source_records, candidate.metadata["source_record_ids"], policy.source_salience_decay)
+            if hasattr(tissue, "trace"):
+                tissue.trace.record("context_metabolite_deposited", **candidate.as_dict())
+        report.source_record_ids = sorted(set(report.source_record_ids))
+        if hasattr(tissue, "trace"):
+            tissue.trace.record("context_metabolism", tick=current_tick, **report.as_dict())
+        return report
+
+    def _candidate(
+        self,
+        metabolite_kind: str,
+        sources: list[MatrixRecord],
+        tissue: Any,
+        policy: ContextMetabolismPolicy,
+        *,
+        trace_events: list[dict[str, Any]] | None = None,
+    ) -> MatrixRecord | None:
+        if len(sources) < policy.min_source_records:
+            return None
+        source_ids = sorted(record.id for record in sources)
+        current_tick = int(getattr(tissue, "tick_count", 0))
+        trace_ids = _trace_event_ids(trace_events or [], current_tick, policy.window_ticks, metabolite_kind)
+        content = _metabolite_content(metabolite_kind, sources, policy.max_metabolite_chars)
+        tags = _metabolite_tags(metabolite_kind, sources)
+        position = sources[0].position
+        fate = sources[0].fate
+        return MatrixRecord(
+            id=_metabolite_id(tissue.environment.matrix.records, metabolite_kind),
+            source_cell_id=0,
+            kind="context_metabolite",
+            content=content,
+            tags=tags,
+            position=position,
+            confidence=_clamp(sum(record.confidence for record in sources) / max(1, len(sources))),
+            created_tick=current_tick,
+            fate=fate,
+            status="active",
+            validation_status=_metabolite_validation_status(metabolite_kind, sources),
+            references=source_ids,
+            salience=0.95,
+            decay_rate=0.02,
+            metadata={
+                "metabolite_kind": metabolite_kind,
+                "source_record_ids": source_ids,
+                "source_trace_event_ids": trace_ids,
+                "compression_level": "metabolite",
+                "lossiness": "bounded",
+                "source_count": len(source_ids),
+                "scope": _metabolite_scope(metabolite_kind),
+            },
+        )
+
+
+@dataclass(slots=True)
 class CommunicationPolicy:
     matrix_query_limit: int = 5
     default_ttl: int = 3
@@ -296,6 +421,7 @@ class CommunicationPolicy:
     allow_broadcast: bool = True
     broadcast_limit: int = 8
     context_budget_chars: int = 1600
+    context_metabolism: ContextMetabolismPolicy = field(default_factory=ContextMetabolismPolicy)
 
 
 @dataclass(slots=True)
@@ -513,8 +639,159 @@ def _context_record_dict(record: MatrixRecord, score: float, max_content_chars: 
         "validation_status": record.validation_status,
         "references": list(record.references),
         "lineage_id": record.lineage_id,
+        "metadata": dict(record.metadata),
         "score": round(score, 6),
     }
+
+
+def _is_metabolite(record: MatrixRecord) -> bool:
+    return bool(record.metadata.get("metabolite_kind")) or record.kind == "context_metabolite"
+
+
+def _failure_sources(records: list[MatrixRecord]) -> list[MatrixRecord]:
+    result = [
+        record
+        for record in records
+        if _is_failed_evidence(record)
+    ]
+    return sorted(result, key=lambda record: record.id)
+
+
+def _episode_sources(records: list[MatrixRecord]) -> list[MatrixRecord]:
+    result = [
+        record
+        for record in records
+        if record.status == "active"
+        and record.validation_status not in {"failed", "contradicted"}
+        and record.kind not in {"validation", "execution", "context_metabolite"}
+        and not bool({"constraint", "policy", "medium", "task_change", "test_failure", "failed"} & set(record.tags))
+    ]
+    return sorted(result, key=lambda record: record.id)
+
+
+def _causal_sources(records: list[MatrixRecord]) -> list[MatrixRecord]:
+    result = [
+        record
+        for record in records
+        if _is_causal_evidence(record)
+    ]
+    return sorted(result, key=lambda record: record.id)
+
+
+def _constraint_sources(records: list[MatrixRecord]) -> list[MatrixRecord]:
+    result = [
+        record
+        for record in records
+        if record.kind in {"medium_change", "policy", "constraint"} or bool({"medium", "task_change", "policy", "constraint"} & set(record.tags))
+    ]
+    return sorted(result, key=lambda record: record.id)
+
+
+def _toxic_sources(records: list[MatrixRecord]) -> list[MatrixRecord]:
+    result = [
+        record
+        for record in records
+        if record.status in {"suppressed", "corrected"} or record.validation_status in {"failed", "contradicted"}
+    ]
+    return sorted(result, key=lambda record: record.id)
+
+
+def _is_failed_evidence(record: MatrixRecord) -> bool:
+    tags = set(record.tags)
+    if record.validation_status == "failed":
+        return True
+    if record.kind in {"validation", "execution"} and "failed" in tags:
+        return True
+    return bool({"test_failure", "failed", "regression"} & tags)
+
+
+def _is_causal_evidence(record: MatrixRecord) -> bool:
+    if record.kind not in {"execution", "validation", "handoff", "observation"}:
+        return False
+    tags = set(record.tags)
+    return bool(
+        {"execution", "validation", "handoff", "pytest.run", "failed", "passed"} & tags
+        or record.validation_status in {"failed", "validated"}
+    )
+
+
+def _metabolite_exists(records: list[MatrixRecord], metabolite_kind: str, source_ids: list[str]) -> bool:
+    wanted = sorted(source_ids)
+    return any(
+        record.metadata.get("metabolite_kind") == metabolite_kind
+        and sorted(str(item) for item in record.metadata.get("source_record_ids", [])) == wanted
+        for record in records
+    )
+
+
+def _metabolite_id(records: list[MatrixRecord], metabolite_kind: str) -> str:
+    return f"context-{metabolite_kind}-{sum(1 for record in records if _is_metabolite(record)) + 1}"
+
+
+def _metabolite_tags(metabolite_kind: str, sources: list[MatrixRecord]) -> list[str]:
+    tags = ["metabolite", metabolite_kind]
+    for record in sources:
+        tags.extend(record.tags)
+        if record.fate:
+            tags.append(record.fate)
+    return list(dict.fromkeys(str(tag) for tag in tags if tag))
+
+
+def _metabolite_content(metabolite_kind: str, sources: list[MatrixRecord], max_chars: int) -> str:
+    title = metabolite_kind.replace("_", " ").title()
+    lines = [f"{title} synthesized from {len(sources)} matrix records."]
+    for record in sources[:6]:
+        snippet = record.content.replace("\n", " ").strip()
+        if len(snippet) > 140:
+            snippet = snippet[:137] + "..."
+        lines.append(f"- {record.id}: {snippet}")
+    content = "\n".join(lines)
+    if len(content) > max_chars:
+        content = content[: max(0, max_chars - 22)] + "\n[metabolite truncated]"
+    return content
+
+
+def _metabolite_validation_status(metabolite_kind: str, sources: list[MatrixRecord]) -> str:
+    if metabolite_kind == "toxic_context":
+        return "contradicted"
+    statuses = {record.validation_status for record in sources}
+    if "failed" in statuses:
+        return "failed"
+    if "validated" in statuses:
+        return "validated"
+    return "unverified"
+
+
+def _metabolite_scope(metabolite_kind: str) -> str:
+    return {
+        "failure_signature": "validation",
+        "episode_summary": "tick_window",
+        "causal_chain": "trace",
+        "constraint_digest": "task_constraints",
+        "toxic_context": "excretion",
+    }.get(metabolite_kind, "matrix")
+
+
+def _trace_event_ids(events: list[dict[str, Any]], current_tick: int, window_ticks: int, metabolite_kind: str) -> list[str]:
+    wanted_types = {
+        "episode_summary": {"message_emitted", "message_delivered", "handoff_requested", "handoff_completed", "llm_effector", "tick"},
+        "causal_chain": {"llm_effector", "message_emitted", "handoff_requested", "handoff_completed", "execution_started", "execution_completed", "execution_skipped", "validation_hook_completed"},
+    }.get(metabolite_kind, set())
+    if not wanted_types:
+        return []
+    result = []
+    for index, event in enumerate(events):
+        event_tick = int(event.get("tick", current_tick))
+        if event.get("type") in wanted_types and event_tick >= current_tick - max(0, window_ticks):
+            result.append(f"trace:{index}")
+    return result
+
+
+def _decay_sources(records: list[MatrixRecord], source_ids: list[str], decay: float) -> None:
+    wanted = set(source_ids)
+    for record in records:
+        if record.id in wanted:
+            record.salience = _clamp(record.salience * (1.0 - max(0.0, min(1.0, decay))))
 
 
 def _clamp(value: float) -> float:
