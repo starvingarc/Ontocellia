@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from ontocellia.framework.output import OutputDigest, OutputMetabolismPolicy, digest_output
 from ontocellia.framework.selection import OrganValidationResult
 
 
@@ -26,6 +27,8 @@ class ValidationHookPolicy:
     allowed_commands: list[str] = field(default_factory=list)
     timeout_seconds: float = 60.0
     max_output_chars: int = 12000
+    artifact_root: Path | str | None = None
+    output_metabolism: OutputMetabolismPolicy | None = None
 
     def is_allowed(self, command: str) -> bool:
         return command in set(self.allowed_commands)
@@ -73,29 +76,37 @@ class ValidationHookRunner:
             )
         except subprocess.TimeoutExpired as error:
             latency = time.monotonic() - started
+            digest = _digest(
+                f"Validation hook timed out after {latency:.2f}s.\n{_timeout_output(error)}",
+                policy,
+                request,
+            )
             result = OrganValidationResult(
                 name=request.name,
                 passed=False,
                 score=0.0,
                 target=request.command,
-                evidence=_truncate(f"Validation hook timed out after {latency:.2f}s.\n{_timeout_output(error)}", policy.max_output_chars),
+                evidence=digest.inline,
                 cost=latency,
                 risk=0.6,
                 latency=latency,
+                output_digest=digest.as_dict(),
             )
             _record(trace, "validation_hook_completed", request=_request_dict(request), result=result.as_dict())
             return result
         except (OSError, ValueError) as error:
             latency = time.monotonic() - started
+            digest = _digest(f"Validation hook failed to start: {error}", policy, request)
             result = OrganValidationResult(
                 name=request.name,
                 passed=False,
                 score=0.0,
                 target=request.command,
-                evidence=_truncate(f"Validation hook failed to start: {error}", policy.max_output_chars),
+                evidence=digest.inline,
                 cost=latency,
                 risk=0.5,
                 latency=latency,
+                output_digest=digest.as_dict(),
             )
             _record(trace, "validation_hook_completed", request=_request_dict(request), result=result.as_dict())
             return result
@@ -104,15 +115,17 @@ class ValidationHookRunner:
         passed = completed.returncode == 0
         output = _combined_output(completed.stdout, completed.stderr)
         status = "passed" if passed else f"failed with exit code {completed.returncode}"
+        digest = _digest(f"Validation hook {status}.\n{output}", policy, request)
         result = OrganValidationResult(
             name=request.name,
             passed=passed,
             score=1.0 if passed else 0.0,
             target=request.command,
-            evidence=_truncate(f"Validation hook {status}.\n{output}", policy.max_output_chars),
+            evidence=digest.inline,
             cost=latency,
             risk=0.0 if passed else 0.5,
             latency=latency,
+            output_digest=digest.as_dict(),
         )
         _record(trace, "validation_hook_completed", request=_request_dict(request), result=result.as_dict())
         return result
@@ -133,10 +146,15 @@ def _timeout_output(error: subprocess.TimeoutExpired) -> str:
     return _combined_output(stdout, stderr)
 
 
-def _truncate(value: str, max_chars: int) -> str:
-    if len(value) <= max_chars:
-        return value
-    return value[: max(0, max_chars - 24)] + "\n[output truncated]"
+def _digest(value: str, policy: ValidationHookPolicy, request: ValidationHookRequest) -> OutputDigest:
+    active_policy = policy.output_metabolism or OutputMetabolismPolicy(max_inline_chars=policy.max_output_chars)
+    return digest_output(
+        "validation",
+        value,
+        active_policy,
+        artifact_root=policy.artifact_root,
+        source_id=f"{request.name}-evidence",
+    )
 
 
 def _record(trace: Any | None, event_type: str, **payload: Any) -> None:

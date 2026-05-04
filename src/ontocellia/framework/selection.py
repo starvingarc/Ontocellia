@@ -15,6 +15,7 @@ class OrganValidationResult:
     cost: float = 0.0
     risk: float = 0.0
     latency: float = 0.0
+    output_digest: dict[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)

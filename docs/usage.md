@@ -313,6 +313,23 @@ Phase16 also writes:
 - `tool_results.json`
 - `execution_results.json` for compatibility
 
+Long tool and validation output is handled by output metabolism. When output exceeds the inline budget, full raw text is written under `raw_outputs/`, while result JSON and matrix records keep a bounded digest:
+
+```json
+{
+  "evidence": "[output digest]\nkind: execution\nraw_chars: 20480\ntruncated: true\nraw_output_path: raw_outputs/tool-0-evidence.txt\n...",
+  "output_digest": {
+    "kind": "execution",
+    "raw_chars": 20480,
+    "inline_chars": 12000,
+    "truncated": true,
+    "raw_output_path": "raw_outputs/tool-0-evidence.txt"
+  }
+}
+```
+
+`tissue_summary.json` includes `raw_outputs`, `truncated_outputs`, and `output_digest_chars`. Matrix records deposited from tool execution include matching metadata such as `raw_output_path`, `raw_output_chars`, `digest_kind`, `truncated`, and `source_result_id`.
+
 Additional adapter gates are explicit:
 
 ```bash

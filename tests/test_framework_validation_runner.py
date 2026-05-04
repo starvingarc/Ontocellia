@@ -71,6 +71,28 @@ def test_timeout_generates_failed_result() -> None:
     assert results[0].latency > 0.0
 
 
+def test_long_validation_hook_output_uses_raw_artifact(tmp_path: Path) -> None:
+    artifact_root = tmp_path / "artifacts"
+    code = "import sys; [print(f'head-{i}') for i in range(80)]; print('ERROR: important validation failure', file=sys.stderr); [print(f'tail-{i}') for i in range(80)]"
+    command = f"{sys.executable} -c {code!r}"
+
+    results = ValidationHookRunner().run(
+        [ValidationHookRequest(name="long", command=command)],
+        ValidationHookPolicy(
+            allowed_commands=[command],
+            max_output_chars=360,
+            artifact_root=artifact_root,
+        ),
+    )
+
+    assert results[0].passed is True
+    assert len(results[0].evidence) <= 360
+    assert results[0].output_digest["truncated"] is True
+    assert results[0].output_digest["raw_output_path"] == "raw_outputs/long-evidence.txt"
+    assert "ERROR: important validation failure" in results[0].evidence
+    assert (artifact_root / "raw_outputs" / "long-evidence.txt").exists()
+
+
 def test_runner_does_not_execute_shell_metacharacters(tmp_path: Path) -> None:
     marker = tmp_path / "shell-marker.txt"
     command = f"{sys.executable} -c \"print('safe')\" ; touch {marker}"
@@ -137,6 +159,8 @@ def test_tissue_cli_runs_allowlisted_validation_hooks(tmp_path: Path) -> None:
     assert results[0]["passed"] is True
     assert "validation ok" in results[0]["evidence"]
     assert summary["validation_results"] == 1
+    assert summary["raw_outputs"] == 0
+    assert summary["truncated_outputs"] == 0
     assert any(event["type"] == "validation_hook_started" for event in trace)
     assert any(event["type"] == "validation_hook_completed" for event in trace)
 

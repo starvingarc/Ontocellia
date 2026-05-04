@@ -321,6 +321,7 @@ def run_tissue(args: argparse.Namespace) -> None:
                 enable_http_tools=bool(args.enable_http_tools),
                 enable_browser_tools=bool(args.enable_browser_tools),
                 timeout_seconds=float(args.execution_timeout),
+                artifact_root=args.output,
                 dry_run=bool(args.execution_dry_run),
             ),
         )
@@ -336,6 +337,7 @@ def run_tissue(args: argparse.Namespace) -> None:
             ValidationHookPolicy(
                 allowed_commands=[str(command) for command in args.allow_validation_hook],
                 timeout_seconds=float(args.validation_timeout),
+                artifact_root=args.output,
             ),
             trace=tissue.trace,
         )
@@ -371,6 +373,8 @@ def run_tissue(args: argparse.Namespace) -> None:
         "network_tool_calls": sum(1 for result in tool_results if result.invocation.adapter == "http"),
         "browser_tool_calls": sum(1 for result in tool_results if result.invocation.adapter == "browser"),
     }
+    output_stats = _output_digest_stats([*tool_results, *execution_results, *validation_results])
+    summary.update(output_stats)
     summary_path = args.output / "tissue_summary.json"
     trace_path = args.output / "tissue_trace.json"
     summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True), encoding="utf-8")
@@ -676,9 +680,24 @@ def _load_validation_results(path: Path | None) -> list[OrganValidationResult] |
             cost=float(item.get("cost", 0.0)),
             risk=float(item.get("risk", 0.0)),
             latency=float(item.get("latency", 0.0)),
+            output_digest=dict(item.get("output_digest", {})),
         )
         for item in data
     ]
+
+
+def _output_digest_stats(results: list[Any]) -> dict[str, Any]:
+    digests = [
+        dict(getattr(result, "output_digest", {}))
+        for result in results
+        if isinstance(getattr(result, "output_digest", {}), dict) and getattr(result, "output_digest", {})
+    ]
+    raw_paths = {str(digest.get("raw_output_path")) for digest in digests if digest.get("raw_output_path")}
+    return {
+        "raw_outputs": len(raw_paths),
+        "truncated_outputs": sum(1 for digest in digests if digest.get("truncated")),
+        "output_digest_chars": sum(int(digest.get("inline_chars", 0)) for digest in digests),
+    }
 
 
 def _collect_validation_hook_requests(genome: object, actions: list[dict[str, object]]) -> list[ValidationHookRequest]:

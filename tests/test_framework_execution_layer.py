@@ -207,6 +207,37 @@ def test_execution_result_deposits_matrix_and_validation_feedback(tmp_path: Path
     assert any(event["type"] == "organ_selection" for event in tissue.trace.events)
 
 
+def test_long_command_output_uses_output_metabolism_artifact(tmp_path: Path) -> None:
+    artifact_root = tmp_path / "artifacts"
+    code = "import sys; [print(f'head-{i}') for i in range(80)]; print('Traceback: important failure', file=sys.stderr); [print(f'tail-{i}') for i in range(80)]"
+    command = f"{sys.executable} -c {code!r}"
+    tissue = make_tissue(tmp_path)
+    actions = [{"cell_id": 1, "intent_type": "review_output", "target": "shell", "payload": {"command": command}}]
+
+    results = ExecutionRuntime().execute(
+        tissue,
+        actions,
+        policy(
+            tmp_path,
+            allowed_interfaces=["shell.run"],
+            allowed_commands=[command],
+            dry_run=False,
+            max_output_chars=360,
+            artifact_root=artifact_root,
+        ),
+    )
+
+    assert results[0].passed is True
+    assert len(results[0].evidence) <= 360
+    assert results[0].output_digest["truncated"] is True
+    assert results[0].output_digest["raw_output_path"] == "raw_outputs/tool-0-evidence.txt"
+    assert "Traceback: important failure" in results[0].evidence
+    assert (artifact_root / "raw_outputs" / "tool-0-evidence.txt").exists()
+    record = tissue.environment.matrix.records[-1]
+    assert record.metadata["raw_output_path"] == "raw_outputs/tool-0-evidence.txt"
+    assert record.metadata["source_result_id"] == "tool-0"
+
+
 def test_tissue_cli_writes_execution_results_in_dry_run(tmp_path: Path) -> None:
     output = tmp_path / "tissue"
 
@@ -237,6 +268,8 @@ def test_tissue_cli_writes_execution_results_in_dry_run(tmp_path: Path) -> None:
     assert results
     assert summary["execution_results"] == len(results)
     assert "changed_files" in summary
+    assert summary["raw_outputs"] == 0
+    assert summary["truncated_outputs"] == 0
 
 
 def test_tissue_cli_without_execute_actions_does_not_write_execution_results(tmp_path: Path) -> None:
@@ -259,4 +292,3 @@ def test_tissue_cli_without_execute_actions_does_not_write_execution_results(tmp
     )
 
     assert not (output / "execution_results.json").exists()
-

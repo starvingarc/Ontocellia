@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from ontocellia.framework.communication import MatrixRecord
+from ontocellia.framework.output import OutputDigest, OutputMetabolismPolicy, digest_output
 from ontocellia.framework.selection import OrganValidationResult
 
 
@@ -73,10 +74,14 @@ class ToolPolicy:
     enable_browser_tools: bool = False
     timeout_seconds: float = 60.0
     max_output_chars: int = 12000
+    artifact_root: Path | str | None = None
+    output_metabolism: OutputMetabolismPolicy | None = None
     dry_run: bool = True
 
     def __post_init__(self) -> None:
         self.workspace_root = Path(self.workspace_root).resolve()
+        if self.artifact_root is not None:
+            self.artifact_root = Path(self.artifact_root)
 
     def allows_interface(self, interface: str) -> bool:
         return _any_interface_matches(interface, self.allowed_interfaces)
@@ -116,6 +121,7 @@ class ExecutionResult:
     risk: float = 0.0
     cost: float = 0.0
     latency: float = 0.0
+    output_digest: dict[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -132,6 +138,7 @@ class ExecutionResult:
             cost=self.cost,
             risk=self.risk,
             latency=self.latency,
+            output_digest=dict(self.output_digest),
         )
 
 
@@ -149,6 +156,7 @@ class ToolResult:
     cost: float = 0.0
     latency: float = 0.0
     matrix_tags: list[str] = field(default_factory=list)
+    output_digest: dict[str, Any] = field(default_factory=dict)
 
     @property
     def request(self) -> ToolInvocation:
@@ -169,6 +177,7 @@ class ToolResult:
             cost=self.cost,
             risk=self.risk,
             latency=self.latency,
+            output_digest=dict(self.output_digest),
         )
 
     def to_execution_result(self) -> ExecutionResult:
@@ -195,6 +204,7 @@ class ToolResult:
             risk=self.risk,
             cost=self.cost,
             latency=self.latency,
+            output_digest=dict(self.output_digest),
         )
 
 
@@ -392,7 +402,8 @@ def _list_workspace(invocation: ToolInvocation, policy: ToolPolicy) -> ToolResul
     if not path.is_dir():
         return _tool_result(invocation, "failed", False, 0.0, f"Workspace directory not found: {path_value}", risk=0.2, matrix_tags=["workspace", "list"])
     entries = sorted(item.name + ("/" if item.is_dir() else "") for item in path.iterdir())
-    return _tool_result(invocation, "passed", True, 1.0, _truncate("\n".join(entries), policy.max_output_chars), matrix_tags=["workspace", "list"])
+    digest = _digest_for_policy("tool", "\n".join(entries), policy, f"{invocation.id}-evidence")
+    return _tool_result(invocation, "passed", True, 1.0, digest.inline, matrix_tags=["workspace", "list"], output_digest=digest.as_dict())
 
 
 def _git_tool(invocation: ToolInvocation, policy: ToolPolicy) -> ToolResult:
@@ -431,7 +442,8 @@ def _mcp_tool(tissue: Any, invocation: ToolInvocation, policy: ToolPolicy) -> To
         return _tool_result(invocation, "skipped", False, 0.0, f"MCP tool is not declared: {invocation.interface}", risk=0.3, matrix_tags=["mcp"])
     content = str(tool.metadata.get("mock_result") or tool.description or f"MCP tool invoked: {invocation.interface}")
     tags = [str(tag) for tag in tool.metadata.get("tags", [])] if isinstance(tool.metadata.get("tags", []), list) else []
-    return _tool_result(invocation, "passed", True, 1.0, content, matrix_tags=["mcp", tool.name, *tags])
+    digest = _digest_for_policy("tool", content, policy, f"{invocation.id}-evidence")
+    return _tool_result(invocation, "passed", True, 1.0, digest.inline, matrix_tags=["mcp", tool.name, *tags], output_digest=digest.as_dict())
 
 
 def _declared_mcp_tool(adapter: Any, interface: str) -> Any | None:
@@ -460,7 +472,8 @@ def _http_tool(invocation: ToolInvocation, policy: ToolPolicy) -> ToolResult:
         with urllib.request.urlopen(request, timeout=policy.timeout_seconds) as response:
             body = response.read().decode("utf-8", errors="replace")
             latency = time.monotonic() - started
-            return _tool_result(invocation, "passed", True, 1.0, _truncate(body, policy.max_output_chars), latency=latency, matrix_tags=["http", _url_host(url)])
+            digest = _digest_for_policy("tool", body, policy, f"{invocation.id}-evidence")
+            return _tool_result(invocation, "passed", True, 1.0, digest.inline, latency=latency, matrix_tags=["http", _url_host(url)], output_digest=digest.as_dict())
     except (urllib.error.URLError, OSError) as error:
         latency = time.monotonic() - started
         return _tool_result(invocation, "failed", False, 0.0, f"HTTP request failed: {error}", risk=0.4, latency=latency, matrix_tags=["http", _url_host(url)])
@@ -515,8 +528,8 @@ def _read_file(request: ExecutionRequest, policy: ExecutionPolicy) -> ExecutionR
         return _result(request, "failed", False, 0.0, str(error), risk=0.4)
     if not path.is_file():
         return _result(request, "failed", False, 0.0, f"Workspace file not found: {path_value}", risk=0.2)
-    content = _truncate(path.read_text(encoding="utf-8", errors="replace"), policy.max_output_chars)
-    return _result(request, "passed", True, 1.0, content)
+    digest = _digest_for_policy("execution", path.read_text(encoding="utf-8", errors="replace"), policy, f"{request.id}-evidence")
+    return _result(request, "passed", True, 1.0, digest.inline, output_digest=digest.as_dict())
 
 
 def _search_workspace(request: ExecutionRequest, policy: ExecutionPolicy) -> ExecutionResult:
@@ -528,10 +541,24 @@ def _search_workspace(request: ExecutionRequest, policy: ExecutionPolicy) -> Exe
         command = ["grep", "-R", "-n", "--", query, str(policy.workspace_root)]
         completed = subprocess.run(command, capture_output=True, check=False, text=True, timeout=policy.timeout_seconds)
     except subprocess.TimeoutExpired as error:
-        return _result(request, "failed", False, 0.0, _truncate(f"Search timed out.\n{_timeout_output(error)}", policy.max_output_chars), risk=0.3)
+        digest = _digest_for_policy("execution", f"Search timed out.\n{_timeout_output(error)}", policy, f"{request.id}-evidence")
+        return _result(request, "failed", False, 0.0, digest.inline, risk=0.3, output_digest=digest.as_dict())
     output = _combined_output(completed.stdout, completed.stderr)
     passed = completed.returncode == 0
-    return _result(request, "passed" if passed else "failed", passed, 1.0 if passed else 0.0, _truncate(output or "No matches.", policy.max_output_chars), stdout=completed.stdout, stderr=completed.stderr, risk=0.0 if passed else 0.1)
+    evidence_digest = _digest_for_policy("execution", output or "No matches.", policy, f"{request.id}-evidence")
+    stdout_digest = _digest_for_policy("stdout", completed.stdout, policy, f"{request.id}-stdout")
+    stderr_digest = _digest_for_policy("stderr", completed.stderr, policy, f"{request.id}-stderr")
+    return _result(
+        request,
+        "passed" if passed else "failed",
+        passed,
+        1.0 if passed else 0.0,
+        evidence_digest.inline,
+        stdout=stdout_digest.inline,
+        stderr=stderr_digest.inline,
+        risk=0.0 if passed else 0.1,
+        output_digest=evidence_digest.as_dict(),
+    )
 
 
 def _apply_patch(request: ExecutionRequest, policy: ExecutionPolicy) -> ExecutionResult:
@@ -565,24 +592,28 @@ def _run_command(request: ExecutionRequest, policy: ExecutionPolicy, command: st
         )
     except subprocess.TimeoutExpired as error:
         latency = time.monotonic() - started
-        return _result(request, "failed", False, 0.0, _truncate(f"Command timed out after {latency:.2f}s.\n{_timeout_output(error)}", policy.max_output_chars), risk=0.5, latency=latency)
+        digest = _digest_for_policy("execution", f"Command timed out after {latency:.2f}s.\n{_timeout_output(error)}", policy, f"{request.id}-evidence")
+        return _result(request, "failed", False, 0.0, digest.inline, risk=0.5, latency=latency, output_digest=digest.as_dict())
     except (OSError, ValueError) as error:
         latency = time.monotonic() - started
         return _result(request, "failed", False, 0.0, f"Command failed to start: {error}", risk=0.5, latency=latency)
     latency = time.monotonic() - started
     passed = completed.returncode == 0
-    output = _truncate(_combined_output(completed.stdout, completed.stderr), policy.max_output_chars)
+    evidence_digest = _digest_for_policy("execution", _combined_output(completed.stdout, completed.stderr), policy, f"{request.id}-evidence")
+    stdout_digest = _digest_for_policy("stdout", completed.stdout, policy, f"{request.id}-stdout")
+    stderr_digest = _digest_for_policy("stderr", completed.stderr, policy, f"{request.id}-stderr")
     status = "passed" if passed else "failed"
     return _result(
         request,
         status,
         passed,
         1.0 if passed else 0.0,
-        output or f"Command {status} with exit code {completed.returncode}.",
-        stdout=_truncate(completed.stdout, policy.max_output_chars),
-        stderr=_truncate(completed.stderr, policy.max_output_chars),
+        evidence_digest.inline or f"Command {status} with exit code {completed.returncode}.",
+        stdout=stdout_digest.inline,
+        stderr=stderr_digest.inline,
         risk=0.0 if passed else 0.5,
         latency=latency,
+        output_digest=evidence_digest.as_dict(),
     )
 
 
@@ -615,6 +646,7 @@ def _tool_from_execution(invocation: ToolInvocation, result: ExecutionResult, ma
         cost=result.cost,
         latency=result.latency,
         matrix_tags=list(matrix_tags),
+        output_digest=dict(result.output_digest),
     )
 
 
@@ -632,6 +664,7 @@ def _tool_result(
     cost: float = 0.0,
     latency: float = 0.0,
     matrix_tags: list[str] | None = None,
+    output_digest: dict[str, Any] | None = None,
 ) -> ToolResult:
     return ToolResult(
         invocation=invocation,
@@ -646,6 +679,7 @@ def _tool_result(
         cost=cost,
         latency=latency,
         matrix_tags=list(matrix_tags or []),
+        output_digest=dict(output_digest or {}),
     )
 
 
@@ -672,6 +706,7 @@ def _deposit_tool_result(tissue: Any, result: ToolResult) -> None:
         lineage_id=str(getattr(getattr(cell, "lineage", None), "root_id", "")) or None,
         references=references,
         salience=max(0.5, result.score),
+        metadata=_output_metadata(result.output_digest, result.invocation.id),
     )
     tissue.environment.matrix.deposit(record)
     tissue.trace.record("matrix_deposit", **record.as_dict())
@@ -707,6 +742,7 @@ def _deposit_result(tissue: Any, result: ExecutionResult) -> None:
         lineage_id=str(getattr(getattr(cell, "lineage", None), "root_id", "")) or None,
         references=[result.request.id],
         salience=max(0.5, result.score),
+        metadata=_output_metadata(result.output_digest, result.request.id),
     )
     tissue.environment.matrix.deposit(record)
     tissue.trace.record("matrix_deposit", **record.as_dict())
@@ -798,6 +834,7 @@ def _result(
     changed_files: list[str] | None = None,
     risk: float = 0.0,
     latency: float = 0.0,
+    output_digest: dict[str, Any] | None = None,
 ) -> ExecutionResult:
     return ExecutionResult(
         request=request,
@@ -810,6 +847,7 @@ def _result(
         changed_files=list(changed_files or []),
         risk=risk,
         latency=latency,
+        output_digest=dict(output_digest or {}),
     )
 
 
@@ -836,10 +874,21 @@ def _timeout_output(error: subprocess.TimeoutExpired) -> str:
     return _combined_output(stdout, stderr)
 
 
-def _truncate(value: str, max_chars: int) -> str:
-    if len(value) <= max_chars:
-        return value
-    return value[: max(0, max_chars - 24)] + "\n[output truncated]"
+def _digest_for_policy(kind: str, value: str, policy: ToolPolicy, source_id: str) -> OutputDigest:
+    active_policy = policy.output_metabolism or OutputMetabolismPolicy(max_inline_chars=policy.max_output_chars)
+    return digest_output(kind, value, active_policy, artifact_root=policy.artifact_root, source_id=source_id)
+
+
+def _output_metadata(output_digest: dict[str, Any], source_result_id: str) -> dict[str, Any]:
+    if not output_digest:
+        return {}
+    return {
+        "raw_output_path": output_digest.get("raw_output_path"),
+        "raw_output_chars": output_digest.get("raw_chars", 0),
+        "digest_kind": output_digest.get("kind"),
+        "truncated": bool(output_digest.get("truncated", False)),
+        "source_result_id": source_result_id,
+    }
 
 
 def _any_interface_matches(interface: str, candidates: list[str]) -> bool:

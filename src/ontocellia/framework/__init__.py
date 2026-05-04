@@ -50,6 +50,7 @@ from .mcp import MCPInterfaceAdapter, MCPPromptSpec, MCPResourceSpec, MCPServerS
 from .model_config import ModelProfile, OntocelliaUserConfig, config_path, load_user_config, resolve_effector_provider, save_user_config
 from .mutation import MutationCandidate, MutationCandidateGenerator, MutationSelectionReport, MutationSelectionRuntime, write_mutation_outputs
 from .official_benchmark import OfficialBenchmarkRunResult, OfficialBenchmarkRunner
+from .output import OutputDigest, OutputMetabolismPolicy, OutputMetabolismRuntime, digest_output
 from .selection import OrganFeedbackSignal, OrganSelectionField, OrganSelectionReport, OrganSelectionTarget, OrganValidationResult
 from .specs import load_agent_genome, load_task_microenvironment
 from .topology import TissueTopology, TopologyNode
@@ -136,6 +137,9 @@ __all__ = [
     "OrganSelectionReport",
     "OrganSelectionTarget",
     "OrganValidationResult",
+    "OutputDigest",
+    "OutputMetabolismPolicy",
+    "OutputMetabolismRuntime",
     "TemplateInductionCompiler",
     "TissueRuntime",
     "TissueBenchmarkRunner",
@@ -150,6 +154,7 @@ __all__ = [
     "ValidationHookPolicy",
     "ValidationHookRequest",
     "ValidationHookRunner",
+    "digest_output",
     "config_path",
     "load_agent_genome",
     "load_task_microenvironment",

@@ -1,6 +1,6 @@
 # Roadmap
 
-Ontocellia is being built as a framework-first developmental agent tissue system. The current foundation includes genome, cell, induction, LLM effector, developmental field, organ selection, communication, context homeostasis, context metabolism, validation-runner, MCP-adapter, mutation-selection, complete-demo, interactive TUI, app server, single-stem development, tissue benchmark, extracellular tool runtime, and adaptive benchmark protocol layers.
+Ontocellia is being built as a framework-first developmental agent tissue system. The current foundation includes genome, cell, induction, LLM effector, developmental field, organ selection, communication, context homeostasis, context metabolism, output metabolism, validation-runner, MCP-adapter, mutation-selection, complete-demo, interactive TUI, app server, single-stem development, tissue benchmark, extracellular tool runtime, and adaptive benchmark protocol layers.
 
 ## Completed
 
@@ -23,11 +23,12 @@ Ontocellia is being built as a framework-first developmental agent tissue system
 - Phase 16: Complete extracellular tool runtime
 - Phase 17: Living tissue app server with HTTP and WebSocket APIs
 - Phase 18: Context metabolism and matrix remodeling layer
+- Phase 19: Output metabolism for tool and validation output
 
 ## Next
 
-- Phase 19: Web Lab petri-dish frontend implementation based on the committed design concept.
-- Phase 20: Official harness expansion for tau-bench, SWE-bench Lite, Terminal-Bench, and multi-agent collaboration suites.
+- Phase 20: Web Lab petri-dish frontend implementation based on the committed design concept.
+- Phase 21: Official harness expansion for tau-bench, SWE-bench Lite, Terminal-Bench, and multi-agent collaboration suites.
 
 ## Product Direction
 

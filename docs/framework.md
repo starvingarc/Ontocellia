@@ -55,6 +55,12 @@ The first metabolites are `failure_signature`, `episode_summary`, `causal_chain`
 
 `TissueRuntime.develop()` runs metabolism after organ selection and validation feedback, then before matrix decay. `CellPromptBuilder` keeps the legacy `relevant_matrix` section and also exposes `context_metabolites` plus `raw_context_record_ids`, so LLM effectors can distinguish synthesized context from raw evidence.
 
+## Output Metabolism
+
+Output metabolism keeps large tool and validation outputs out of prompts and result JSON while preserving full auditability. Tool execution and validation hooks write long raw stdout, stderr, and evidence to `raw_outputs/` artifacts, then expose deterministic digests inline.
+
+Digests preserve head, tail, error/failure/traceback lines, original character count, truncation status, and the raw artifact path. Matrix records receive the same output metadata, so context metabolism can work from compact evidence while raw logs remain available for debugging.
+
 ## MCP Adapter
 
 MCP is modeled as an extracellular interface implementation detail. MCP tools become membrane-channel interfaces, MCP resources seed extracellular matrix records, MCP prompts become induction-factor interfaces, and tool results can deposit matrix evidence plus returned morphogen signals. Phase8 does not start external MCP processes or call network tools.
