@@ -79,7 +79,9 @@ The tissue benchmark harness evaluates framework-native agent capabilities with 
 
 ## Adaptive Benchmark Protocol
 
-The official benchmark harness evaluates Ontocellia as an adaptive tissue, not as a direct model wrapper. Official tasks are converted into generic task microenvironments, seeded from a single stem-origin cell, developed through the normal runtime, and reported with structure metrics such as fate distribution, proliferation, handoff completion, matrix reuse, provider-call count, validation cycles, execution success, and structure efficiency.
+The official benchmark harness evaluates Ontocellia as an adaptive tissue, not as a direct model wrapper. BFCL uses official data and answer scoring as a provider baseline. SWE-bench Lite loads the upstream Hugging Face split, Terminal-Bench loads upstream `task.yaml` files, and tau-bench parses upstream airline/retail task files without importing their runtime dependencies.
+
+Non-BFCL runs report Ontocellia structure metrics separately from official scorer status. When an official scorer is not executed, artifacts state `official_score_status: not_run`; pass/fail is only reported after an actual official scorer run. Adaptive runs can compare Phase22 variants and record selected structure, repair presence, expected fate coverage, matrix reuse, provider calls, and provider-call errors.
 
 BFCL remains available as a provider/tool-call baseline because simple function calling is usually solved well by the underlying model alone. Ontocellia's main benchmark path targets harder collaborative settings such as tau-bench, Terminal-Bench, MultiAgentBench/MARBLE-style tasks, and SWE-bench-style repo repair.
 

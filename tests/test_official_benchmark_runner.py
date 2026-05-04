@@ -141,6 +141,100 @@ def test_official_benchmark_cli_runs_adaptive_tissue_fixture(tmp_path: Path, mon
     assert (output / "adaptation_report.md").exists()
 
 
+def test_official_adaptive_run_writes_official_tasks_and_scoring_status(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ONTOCELLIA_CONFIG_DIR", str(tmp_path / "config"))
+    save_user_config(
+        OntocelliaUserConfig(
+            models={"default": "mock", "profiles": {"mock": ModelProfile(provider="mock-llm", model="mock-llm")}}
+        )
+    )
+    source = tmp_path / "terminal-source"
+    task_dir = source / "original-tasks" / "jsonl-aggregator"
+    task_dir.mkdir(parents=True)
+    (task_dir / "task.yaml").write_text(
+        "instruction: aggregate JSONL records\ncategory: file-operations\nparser_name: pytest\n",
+        encoding="utf-8",
+    )
+
+    result = OfficialBenchmarkRunner().run(
+        benchmark="terminal-bench",
+        output=tmp_path / "run",
+        model_profile="mock",
+        limit=1,
+        dry_run=False,
+        source_dir=source,
+    )
+
+    summary = json.loads(result.summary_path.read_text(encoding="utf-8"))
+    scoring = json.loads((tmp_path / "run" / "scoring_status.json").read_text(encoding="utf-8"))
+    assert summary["benchmark"] == "terminal-bench"
+    assert summary["official_score_status"] == "not_run"
+    assert scoring["official_score_status"] == "not_run"
+    assert (tmp_path / "run" / "official_tasks.jsonl").exists()
+    assert (tmp_path / "run" / "official_task_manifest.json").exists()
+
+
+def test_official_adaptive_run_with_structure_search_writes_selected_variant(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ONTOCELLIA_CONFIG_DIR", str(tmp_path / "config"))
+    save_user_config(
+        OntocelliaUserConfig(
+            models={"default": "mock", "profiles": {"mock": ModelProfile(provider="mock-llm", model="mock-llm")}}
+        )
+    )
+    source = tmp_path / "terminal-source"
+    task_dir = source / "original-tasks" / "debug-task"
+    task_dir.mkdir(parents=True)
+    (task_dir / "task.yaml").write_text(
+        """
+instruction: Fix a failing pytest regression.
+category: debugging
+tags:
+  - debugging
+parser_name: pytest
+""",
+        encoding="utf-8",
+    )
+
+    OfficialBenchmarkRunner().run(
+        benchmark="terminal-bench",
+        output=tmp_path / "run",
+        model_profile="mock",
+        limit=1,
+        dry_run=False,
+        source_dir=source,
+        structure_search=True,
+    )
+
+    structure = json.loads((tmp_path / "run" / "structure_report.json").read_text(encoding="utf-8"))
+    task = structure["tasks"][0]
+    assert task["metrics"]["selected_variant"] in {"baseline", "lean", "memory_heavy", "repair_heavy", "review_heavy"}
+    assert "repair_presence" in task["metrics"]
+    assert (tmp_path / "run" / "tissue_traces" / "debug-task" / "variants" / "baseline" / "tissue_trace.json").exists()
+
+
+def test_official_runner_records_provider_errors_without_aborting(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    class TimeoutProvider:
+        name = "timeout-provider"
+
+        def complete(self, prompt):  # type: ignore[no-untyped-def]
+            raise TimeoutError("provider timed out")
+
+    monkeypatch.setattr("ontocellia.framework.official_benchmark.resolve_effector_provider", lambda *args, **kwargs: TimeoutProvider())
+    task = AdaptiveBenchmarkTask(
+        id="tau-timeout",
+        source_benchmark="tau-bench",
+        prompt="Book a reservation using official tau-bench tools.",
+        metadata={"tools": [{"name": "book_reservation"}], "policy": "official tau-bench airline environment task"},
+    )
+
+    result = AdaptiveTissueBenchmarkRunner(model_profile="timeout", dry_run=False).run_tasks([task], tmp_path)
+
+    structure = json.loads(result.structure_path.read_text(encoding="utf-8"))
+    trace = json.loads((tmp_path / "tissue_traces" / "tau-timeout" / "tissue_trace.json").read_text(encoding="utf-8"))
+    assert structure["tasks"][0]["metrics"]["provider_call_errors"] > 0
+    assert any(event["type"] == "official_benchmark_provider_error" for event in trace)
+
+
 def test_provider_baseline_scores_bfcl_mock_predictions(tmp_path: Path) -> None:
     tasks = [
         {
@@ -179,4 +273,3 @@ def test_official_outputs_do_not_contain_api_key_pattern(tmp_path: Path) -> None
     combined = "\n".join(path.read_text(encoding="utf-8") for path in tmp_path.iterdir() if path.is_file())
     assert "sk-" not in combined
     assert result.report_path.exists()
-

@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import json
+import ast
+import subprocess
 import time
 import urllib.request
+from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
+
+import yaml
 
 from ontocellia.framework.cell import CellPosition
 from ontocellia.framework.communication import MatrixRecord
@@ -14,11 +19,15 @@ from ontocellia.framework.induction import InductionRequest, TemplateInductionCo
 from ontocellia.framework.llm import CellPrompt, EffectorRuntime, MockLLMProvider, OpenAICompatibleProvider
 from ontocellia.framework.model_config import load_secret_env, load_user_config, resolve_effector_provider
 from ontocellia.framework.selection import OrganValidationResult
+from ontocellia.framework.structure_search import StructureVariant, builtin_structure_variants
 
 
 BFCL_DATASET = "gorilla-llm/Berkeley-Function-Calling-Leaderboard"
 BFCL_BASE_URL = "https://huggingface.co/datasets/gorilla-llm/Berkeley-Function-Calling-Leaderboard/resolve/main"
 BFCL_DEFAULT_CATEGORY = "BFCL_v3_simple"
+SWE_BENCH_LITE_DATASET = "princeton-nlp/SWE-bench_Lite"
+TERMINAL_BENCH_REPO = "https://github.com/laude-institute/terminal-bench.git"
+TAU_BENCH_REPO = "https://github.com/sierra-research/tau-bench.git"
 
 
 @dataclass(slots=True)
@@ -94,10 +103,31 @@ class GenericOfficialBenchmarkAdapter:
             raise ValueError(f"unsupported adaptive benchmark: {self.name}")
         return fixtures[self.name]
 
-    def load_tasks(self, *, limit: int | None = None, task_id: str | None = None, dry_run: bool = False) -> list[AdaptiveBenchmarkTask]:
+    def load_tasks(
+        self,
+        *,
+        limit: int | None = None,
+        task_id: str | None = None,
+        dry_run: bool = False,
+        split: str = "test",
+        source_dir: str | Path | None = None,
+        tau_domain: str = "airline",
+    ) -> list[AdaptiveBenchmarkTask]:
+        if dry_run:
+            task = self.fixture_task()
+            if task_id is not None:
+                task = AdaptiveBenchmarkTask(task_id, self.name, task.prompt, dict(task.metadata))
+            tasks = [task]
+            return tasks[:limit] if limit is not None else tasks
+        if self.name == "swe-bench-lite":
+            return _load_swe_bench_tasks(limit=limit, task_id=task_id, split=split)
+        if self.name == "terminal-bench":
+            return _load_terminal_bench_tasks(limit=limit, task_id=task_id, source_dir=source_dir)
+        if self.name == "tau-bench":
+            return _load_tau_bench_tasks(limit=limit, task_id=task_id, source_dir=source_dir, tau_domain=tau_domain)
+        if self.name == "multiagentbench":
+            raise ValueError("multiagentbench official source loading is not implemented; use --dry-run for fixture mode")
         task = self.fixture_task()
-        if task_id is not None:
-            task = AdaptiveBenchmarkTask(task_id, self.name, task.prompt, dict(task.metadata))
         tasks = [task]
         return tasks[:limit] if limit is not None else tasks
 
@@ -106,14 +136,14 @@ class GenericOfficialBenchmarkAdapter:
         interfaces = [interface.id for interface in environment.interfaces]
         return InductionRequest(
             task=task.prompt,
-            domain="generic",
+            domain=_induction_domain_for_task(task),
             available_interfaces=interfaces,
             constraints={"source_benchmark": task.source_benchmark, **task.metadata},
         )
 
     def to_microenvironment(self, task: AdaptiveBenchmarkTask) -> TaskMicroenvironment:
         metadata = dict(task.metadata)
-        tools = [str(tool.get("name", tool)) for tool in metadata.get("tools", [])]
+        tools = ["workspace", *[str(tool.get("name", tool)) for tool in metadata.get("tools", [])]]
         if metadata.get("check_command"):
             tools.append("shell.run")
         if metadata.get("tests"):
@@ -140,11 +170,22 @@ class GenericOfficialBenchmarkAdapter:
 
 
 class AdaptiveTissueBenchmarkRunner:
-    def __init__(self, *, model_profile: str | None = None, dry_run: bool = True, steps: int = 6, seed: int = 7) -> None:
+    def __init__(
+        self,
+        *,
+        model_profile: str | None = None,
+        dry_run: bool = True,
+        steps: int = 6,
+        seed: int = 7,
+        structure_search: bool = False,
+        run_official_scorer: bool = False,
+    ) -> None:
         self.model_profile = model_profile
         self.dry_run = dry_run
         self.steps = steps
         self.seed = seed
+        self.structure_search = structure_search
+        self.run_official_scorer = run_official_scorer
 
     def run_tasks(self, tasks: list[AdaptiveBenchmarkTask], output: str | Path) -> AdaptiveBenchmarkReport:
         output_dir = Path(output)
@@ -152,36 +193,44 @@ class AdaptiveTissueBenchmarkRunner:
         traces_dir = output_dir / "tissue_traces"
         traces_dir.mkdir(exist_ok=True)
         provider = MockLLMProvider() if self.dry_run else resolve_effector_provider("llm", model_profile=self.model_profile)
+        scoring = _scoring_status(tasks, self.run_official_scorer)
         task_reports = []
         predictions = []
         for task in tasks:
-            adapter = GenericOfficialBenchmarkAdapter(task.source_benchmark)
-            draft = TemplateInductionCompiler().compile(adapter.to_induction_request(task))
-            tissue = TissueRuntime.seeded(draft.genome, draft.environment, seed=self.seed)
-            validation = [OrganValidationResult("official_task", False, 0.25, task.id, "official benchmark pressure", 0.1, 0.2, 0.0)]
-            tissue.develop(ticks=self.steps, validation_results=validation)
-            actions = tissue.execute(effectors=EffectorRuntime(provider))
-            tissue.develop(ticks=1, validation_results=validation)
             task_dir = traces_dir / task.id
             task_dir.mkdir(parents=True, exist_ok=True)
-            metrics = _structure_metrics(tissue, actions)
+            if self.structure_search:
+                selected, variants = _run_structure_search_task(task, provider, self.steps, self.seed, scoring, task_dir)
+                metrics = selected["metrics"]
+                actions = selected["actions"]
+                task_report = {"task_id": task.id, "source_benchmark": task.source_benchmark, "metrics": metrics, "variants": variants}
+            else:
+                selected = _run_single_task(task, provider, self.steps, self.seed, scoring, task_dir)
+                metrics = selected["metrics"]
+                actions = selected["actions"]
+                task_report = {"task_id": task.id, "source_benchmark": task.source_benchmark, "metrics": metrics}
             _write_json(task_dir / "tissue_summary.json", {"task": task.as_dict(), "metrics": metrics})
-            (task_dir / "tissue_trace.json").write_text(json.dumps(tissue.trace.events, indent=2, sort_keys=True), encoding="utf-8")
+            (task_dir / "tissue_trace.json").write_text(json.dumps(selected["trace"], indent=2, sort_keys=True), encoding="utf-8")
             _write_jsonl(task_dir / "action_intents.jsonl", actions)
-            task_reports.append({"task_id": task.id, "source_benchmark": task.source_benchmark, "metrics": metrics})
+            task_reports.append(task_report)
             predictions.append({"id": task.id, "source_benchmark": task.source_benchmark, "actions": actions, "metrics": metrics})
         summary = {
             "benchmark": tasks[0].source_benchmark if tasks else "adaptive",
             "mode": "adaptive-tissue",
             "tasks": len(tasks),
             "dry_run": self.dry_run,
+            "structure_search": self.structure_search,
+            "official_score_status": scoring["official_score_status"],
             "average_structure_efficiency": _average([item["metrics"]["structure_efficiency"] for item in task_reports]),
         }
         structure = {"mode": "adaptive-tissue", "tasks": task_reports}
-        _write_json(output_dir / "run_config.json", {"mode": "adaptive-tissue", "model_profile": self.model_profile, "dry_run": self.dry_run})
+        _write_json(output_dir / "run_config.json", {"mode": "adaptive-tissue", "model_profile": self.model_profile, "dry_run": self.dry_run, "structure_search": self.structure_search})
+        _write_jsonl(output_dir / "official_tasks.jsonl", [task.as_dict() for task in tasks])
+        _write_json(output_dir / "official_task_manifest.json", {"tasks": [task.as_dict() for task in tasks]})
+        _write_json(output_dir / "scoring_status.json", scoring)
         _write_json(output_dir / "ontocellia_summary.json", summary)
         _write_json(output_dir / "structure_report.json", structure)
-        _write_json(output_dir / "official_results.json", {"mode": "adaptive-tissue", "tasks": task_reports})
+        _write_json(output_dir / "official_results.json", {"mode": "adaptive-tissue", "scoring_status": scoring, "tasks": task_reports})
         _write_jsonl(output_dir / "ontocellia_predictions.jsonl", predictions)
         (output_dir / "adaptation_report.md").write_text(_adaptive_report(summary, task_reports), encoding="utf-8")
         return AdaptiveBenchmarkReport(
@@ -216,14 +265,24 @@ class OfficialBenchmarkRunner:
         dry_run: bool = False,
         category: str = BFCL_DEFAULT_CATEGORY,
         mode: str | None = None,
+        split: str = "test",
+        source_dir: str | Path | None = None,
+        tau_domain: str = "airline",
+        structure_search: bool = False,
+        run_official_scorer: bool = False,
     ) -> OfficialBenchmarkRunResult | AdaptiveBenchmarkReport:
         selected_mode = mode or ("provider-baseline" if benchmark == "bfcl" else "adaptive-tissue")
         if not full and limit is None and task_id is None:
             raise ValueError("official benchmark runs require --limit, --task-id, or --full")
         if selected_mode == "adaptive-tissue":
             adapter = OfficialBenchmarkAdapter.for_benchmark(benchmark)
-            tasks = adapter.load_tasks(limit=limit, task_id=task_id, dry_run=dry_run)
-            return AdaptiveTissueBenchmarkRunner(model_profile=model_profile, dry_run=dry_run).run_tasks(tasks, output)
+            tasks = adapter.load_tasks(limit=limit, task_id=task_id, dry_run=dry_run, split=split, source_dir=source_dir, tau_domain=tau_domain)
+            return AdaptiveTissueBenchmarkRunner(
+                model_profile=model_profile,
+                dry_run=dry_run,
+                structure_search=structure_search,
+                run_official_scorer=run_official_scorer,
+            ).run_tasks(tasks, output)
         if benchmark != "bfcl":
             raise ValueError(f"{benchmark} only supports adaptive-tissue mode")
         return self._run_bfcl_provider_baseline(output, model_profile, limit, task_id, full, dry_run, category)
@@ -274,9 +333,12 @@ class OfficialBenchmarkRunner:
         }
         _write_json(output_dir / "run_config.json", {"benchmark": "bfcl", "mode": "provider-baseline", "category": category})
         _write_jsonl(output_dir / "official_tasks.jsonl", tasks)
+        _write_json(output_dir / "official_task_manifest.json", {"tasks": tasks})
         _write_jsonl(output_dir / "official_answers.jsonl", [{"id": task.get("id", ""), "ground_truth": answers.get(str(task.get("id", "")), [])} for task in tasks])
         _write_jsonl(output_dir / "ontocellia_predictions.jsonl", predictions)
-        _write_json(output_dir / "official_results.json", {"benchmark": "bfcl", "scores": scores, "predictions": predictions})
+        scoring = {"official_score_status": "run", "scorer": "bfcl_exact_function_call", **scores}
+        _write_json(output_dir / "scoring_status.json", scoring)
+        _write_json(output_dir / "official_results.json", {"benchmark": "bfcl", "scores": scores, "scoring_status": scoring, "predictions": predictions})
         _write_json(output_dir / "ontocellia_summary.json", summary)
         (output_dir / "report.md").write_text(_bfcl_report(summary), encoding="utf-8")
         (output_dir / "official_command.sh").write_text(_bfcl_command_text(category), encoding="utf-8")
@@ -316,6 +378,144 @@ class OfficialBenchmarkRunner:
         )
 
 
+def load_swe_bench_task_from_row(row: dict[str, Any], *, benchmark_id: str = "swe-bench-lite") -> AdaptiveBenchmarkTask:
+    prompt = str(row.get("problem_statement", ""))
+    tests = list(row.get("FAIL_TO_PASS") or [])
+    return AdaptiveBenchmarkTask(
+        id=str(row.get("instance_id", "")),
+        source_benchmark=benchmark_id,
+        prompt=prompt,
+        metadata={
+            "repo": row.get("repo"),
+            "base_commit": row.get("base_commit"),
+            "issue": prompt,
+            "tests": tests,
+            "pass_to_pass": list(row.get("PASS_TO_PASS") or []),
+            "official_dataset": SWE_BENCH_LITE_DATASET,
+        },
+    )
+
+
+def load_terminal_bench_task_from_yaml(path: str | Path, *, task_id: str | None = None) -> AdaptiveBenchmarkTask:
+    task_path = Path(path)
+    data = yaml.safe_load(task_path.read_text(encoding="utf-8")) or {}
+    task_name = task_id or task_path.parent.name
+    parser = str(data.get("parser_name", ""))
+    return AdaptiveBenchmarkTask(
+        id=task_name,
+        source_benchmark="terminal-bench",
+        prompt=str(data.get("instruction", "")),
+        metadata={
+            "difficulty": data.get("difficulty"),
+            "category": data.get("category"),
+            "tags": list(data.get("tags") or []),
+            "check_command": f"official terminal-bench parser: {parser}" if parser else "official terminal-bench parser",
+            "official_repo": "laude-institute/terminal-bench",
+        },
+    )
+
+
+def load_tau_bench_tasks_from_text(
+    text: str,
+    *,
+    benchmark_id: str = "tau-bench",
+    tau_domain: str = "airline",
+    limit: int | None = None,
+    task_id: str | None = None,
+) -> list[AdaptiveBenchmarkTask]:
+    tree = ast.parse(text)
+    tasks: list[AdaptiveBenchmarkTask] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        if not any(isinstance(target, ast.Name) and target.id == "TASKS" for target in node.targets):
+            continue
+        for index, element in enumerate(getattr(node.value, "elts", [])):
+            current_id = f"{tau_domain}-test-{index}"
+            if task_id is not None and task_id != current_id:
+                continue
+            task = _tau_task_from_ast_call(element, current_id, benchmark_id, tau_domain)
+            if task is not None:
+                tasks.append(task)
+            if limit is not None and len(tasks) >= limit:
+                return tasks
+        break
+    return tasks
+
+
+def _tau_task_from_ast_call(element: ast.AST, task_id: str, benchmark_id: str, tau_domain: str) -> AdaptiveBenchmarkTask | None:
+    if not isinstance(element, ast.Call):
+        return None
+    values: dict[str, Any] = {}
+    action_names: list[str] = []
+    for keyword in element.keywords:
+        if keyword.arg in {"user_id", "instruction", "outputs"}:
+            values[keyword.arg] = ast.literal_eval(keyword.value)
+        if keyword.arg == "actions" and isinstance(keyword.value, ast.List):
+            for action_call in keyword.value.elts:
+                if not isinstance(action_call, ast.Call):
+                    continue
+                for action_keyword in action_call.keywords:
+                    if action_keyword.arg == "name":
+                        action_names.append(str(ast.literal_eval(action_keyword.value)))
+    instruction = str(values.get("instruction", ""))
+    return AdaptiveBenchmarkTask(
+        id=task_id,
+        source_benchmark=benchmark_id,
+        prompt=instruction,
+        metadata={
+            "user_id": values.get("user_id"),
+            "expected_action_names": action_names,
+            "outputs": list(values.get("outputs") or []),
+            "policy": f"official tau-bench {tau_domain} environment task",
+            "tools": [{"name": name} for name in sorted(set(action_names))],
+            "official_repo": "sierra-research/tau-bench",
+            "tau_domain": tau_domain,
+        },
+    )
+
+
+def _load_swe_bench_tasks(*, limit: int | None, task_id: str | None, split: str) -> list[AdaptiveBenchmarkTask]:
+    try:
+        from datasets import load_dataset
+    except ImportError as error:
+        raise RuntimeError("SWE-bench official loading requires installing the benchmark extra: pip install 'ontocellia[benchmark]'") from error
+    dataset = load_dataset(SWE_BENCH_LITE_DATASET, split=split)
+    tasks = [load_swe_bench_task_from_row(dict(row)) for row in dataset]
+    if task_id is not None:
+        tasks = [task for task in tasks if task.id == task_id]
+    return tasks[:limit] if limit is not None else tasks
+
+
+def _load_terminal_bench_tasks(*, limit: int | None, task_id: str | None, source_dir: str | Path | None) -> list[AdaptiveBenchmarkTask]:
+    root = _ensure_source_dir("terminal-bench", source_dir)
+    task_paths = sorted((root / "original-tasks").glob("*/task.yaml"))
+    tasks = [load_terminal_bench_task_from_yaml(path) for path in task_paths]
+    if task_id is not None:
+        tasks = [task for task in tasks if task.id == task_id]
+    return tasks[:limit] if limit is not None else tasks
+
+
+def _load_tau_bench_tasks(*, limit: int | None, task_id: str | None, source_dir: str | Path | None, tau_domain: str) -> list[AdaptiveBenchmarkTask]:
+    root = _ensure_source_dir("tau-bench", source_dir)
+    path = root / "tau_bench" / "envs" / tau_domain / "tasks_test.py"
+    if not path.exists():
+        raise FileNotFoundError(f"tau-bench task file not found: {path}")
+    return load_tau_bench_tasks_from_text(path.read_text(encoding="utf-8"), tau_domain=tau_domain, limit=limit, task_id=task_id)
+
+
+def _ensure_source_dir(benchmark: str, source_dir: str | Path | None) -> Path:
+    root = Path(source_dir) if source_dir is not None else Path("artifacts") / "official_sources" / benchmark
+    if root.exists():
+        return root
+    repo = {"terminal-bench": TERMINAL_BENCH_REPO, "tau-bench": TAU_BENCH_REPO}.get(benchmark)
+    if repo is None:
+        return root
+    root.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["git", "clone", "--depth", "1", repo, str(root)], check=True)
+    return root
+
+
 def _matrix_records_for_task(task: AdaptiveBenchmarkTask) -> list[MatrixRecord]:
     records = []
     metadata = task.metadata
@@ -338,25 +538,144 @@ def _morphogens_for_task(task: AdaptiveBenchmarkTask) -> MorphogenField:
     return MorphogenField(signals)
 
 
-def _structure_metrics(tissue: TissueRuntime, actions: list[dict[str, Any]]) -> dict[str, Any]:
+def _run_single_task(task: AdaptiveBenchmarkTask, provider: Any, steps: int, seed: int, scoring: dict[str, Any], task_dir: Path) -> dict[str, Any]:
+    tissue = _seed_official_tissue(task, seed)
+    validation = [OrganValidationResult("official_task", False, 0.25, task.id, "official benchmark pressure", 0.1, 0.2, 0.0)]
+    tissue.develop(ticks=steps, validation_results=validation)
+    actions = _safe_execute_tissue(tissue, provider)
+    tissue.develop(ticks=1, validation_results=validation)
+    metrics = _structure_metrics(task, tissue, actions, scoring, selected_variant="baseline")
+    return {"variant": "baseline", "tissue": tissue, "actions": actions, "metrics": metrics, "trace": tissue.trace.events}
+
+
+def _run_structure_search_task(
+    task: AdaptiveBenchmarkTask,
+    provider: Any,
+    steps: int,
+    seed: int,
+    scoring: dict[str, Any],
+    task_dir: Path,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    variants = []
+    for variant in builtin_structure_variants():
+        variant_dir = task_dir / "variants" / variant.name
+        variant_dir.mkdir(parents=True, exist_ok=True)
+        result = _run_variant_task(task, provider, steps, seed, scoring, variant)
+        _write_json(variant_dir / "tissue_summary.json", {"task": task.as_dict(), "metrics": result["metrics"]})
+        (variant_dir / "tissue_trace.json").write_text(json.dumps(result["trace"], indent=2, sort_keys=True), encoding="utf-8")
+        _write_jsonl(variant_dir / "action_intents.jsonl", result["actions"])
+        variants.append({key: result[key] for key in ("variant", "metrics", "actions", "trace")})
+    selected = sorted(variants, key=lambda item: (-_structure_selection_score(item["metrics"]), str(item["variant"])))[0]
+    selected["metrics"] = {**selected["metrics"], "selected_variant": selected["variant"]}
+    return selected, [{"variant": item["variant"], "metrics": item["metrics"]} for item in variants]
+
+
+def _run_variant_task(
+    task: AdaptiveBenchmarkTask,
+    provider: Any,
+    steps: int,
+    seed: int,
+    scoring: dict[str, Any],
+    variant: StructureVariant,
+) -> dict[str, Any]:
+    tissue = _seed_official_tissue(task, seed)
+    _apply_structure_variant(tissue.environment, variant)
+    if variant.min_population_before_differentiation is not None:
+        tissue.min_population_before_differentiation = variant.min_population_before_differentiation
+    if variant.target_population_delta:
+        tissue.target_population = max(1, (tissue.target_population or len(tissue.cells)) + variant.target_population_delta)
+    validation = [OrganValidationResult("official_task", False, 0.25, task.id, "official benchmark pressure", 0.1, 0.2, 0.0)]
+    tissue.develop(ticks=steps, validation_results=validation)
+    actions = _safe_execute_tissue(tissue, provider)
+    tissue.develop(ticks=1, validation_results=validation)
+    metrics = _structure_metrics(task, tissue, actions, scoring, selected_variant=variant.name)
+    return {"variant": variant.name, "tissue": tissue, "actions": actions, "metrics": metrics, "trace": tissue.trace.events}
+
+
+def _seed_official_tissue(task: AdaptiveBenchmarkTask, seed: int) -> TissueRuntime:
+    adapter = GenericOfficialBenchmarkAdapter(task.source_benchmark)
+    draft = TemplateInductionCompiler().compile(adapter.to_induction_request(task))
+    official_environment = adapter.to_microenvironment(task)
+    _merge_official_environment(draft.environment, official_environment)
+    return TissueRuntime.seeded(draft.genome, draft.environment, seed=seed)
+
+
+def _safe_execute_tissue(tissue: TissueRuntime, provider: Any) -> list[dict[str, Any]]:
+    try:
+        return tissue.execute(effectors=EffectorRuntime(provider))
+    except Exception as error:
+        tissue.trace.record(
+            "official_benchmark_provider_error",
+            provider=getattr(provider, "name", provider.__class__.__name__),
+            error_type=error.__class__.__name__,
+            error=str(error),
+        )
+        return []
+
+
+def _merge_official_environment(target: TaskMicroenvironment, source: TaskMicroenvironment) -> None:
+    for name, value in source.morphogens.signals.items():
+        target.morphogens.emit(name, value)
+    existing_interfaces = {interface.id for interface in target.interfaces}
+    for interface in source.interfaces:
+        if interface.id not in existing_interfaces:
+            target.interfaces.append(interface)
+            existing_interfaces.add(interface.id)
+    existing_records = {record.id for record in target.matrix.records}
+    for record in source.matrix.records:
+        if record.id not in existing_records:
+            target.matrix.deposit(record)
+            existing_records.add(record.id)
+
+
+def _apply_structure_variant(environment: TaskMicroenvironment, variant: StructureVariant) -> None:
+    for name, amount in variant.morphogen_patch.items():
+        environment.morphogens.emit(name, amount)
+    for fate, delta in variant.niche_demand_patch.items():
+        for niche in environment.niches:
+            if niche.required_fate == fate:
+                niche.demand = max(1, niche.demand + delta)
+                break
+        else:
+            node = f"{fate}-variant-niche"
+            environment.niches.append(Niche(node, fate, CellPosition(node, "variant")))
+
+
+def _structure_selection_score(metrics: dict[str, Any]) -> float:
+    return float(metrics["structure_efficiency"]) + float(metrics.get("repair_presence", 0.0)) * 0.1 + float(metrics.get("expected_fate_coverage", 0.0)) * 0.1
+
+
+def _structure_metrics(task: AdaptiveBenchmarkTask, tissue: TissueRuntime, actions: list[dict[str, Any]], scoring: dict[str, Any], *, selected_variant: str) -> dict[str, Any]:
     events = tissue.trace.events
     execution_events = [event for event in events if event["type"].startswith("execution_")]
     validation_cycles = [event for event in events if event["type"] == "organ_selection"]
     provider_calls = [event for event in events if event["type"] == "llm_effector"]
+    provider_errors = [event for event in events if event["type"] == "official_benchmark_provider_error"]
     handoffs = [event for event in events if event["type"] == "handoff_completed"]
     matrix_records = len(tissue.environment.matrix.records)
     action_count = max(1, len(actions))
+    fate_counts = tissue.fate_counts()
+    expected_fate_coverage = _expected_fate_coverage(task, fate_counts)
+    repair_presence = 1.0 if fate_counts.get("repair", 0) > 0 else 0.0
     return {
         "final_task_success": 0.0,
-        "fate_distribution": tissue.fate_counts(),
+        "fate_distribution": fate_counts,
         "proliferation_events": sum(1 for event in events if event["type"] == "proliferation"),
         "handoff_completion_rate": len(handoffs) / action_count,
         "matrix_reuse_rate": min(1.0, matrix_records / action_count),
         "execution_success_rate": _execution_success_rate(execution_events),
         "validation_feedback_cycles": len(validation_cycles),
         "provider_call_count": len(provider_calls),
-        "structure_efficiency": round(min(1.0, (len(tissue.fate_counts()) / 5.0) * 0.4 + min(1.0, matrix_records / action_count) * 0.3 + (len(handoffs) > 0) * 0.3), 6),
+        "provider_call_errors": len(provider_errors),
+        "structure_efficiency": round(min(1.0, (len(fate_counts) / 5.0) * 0.25 + expected_fate_coverage * 0.25 + min(1.0, matrix_records / action_count) * 0.25 + (len(handoffs) > 0) * 0.15 + repair_presence * 0.1), 6),
         "regeneration_events": sum(1 for event in events if event["type"] == "regeneration"),
+        "selected_variant": selected_variant,
+        "repair_presence": repair_presence,
+        "expected_fate_coverage": expected_fate_coverage,
+        "official_score_status": scoring["official_score_status"],
+        "scorer_pass_rate": float(scoring.get("scorer_pass_rate", 0.0)),
+        "execution_attempted": bool(execution_events),
+        "blocked_tool_requests": sum(1 for event in events if event["type"] in {"tool_invocation_skipped", "execution_skipped"}),
     }
 
 
@@ -365,6 +684,56 @@ def _execution_success_rate(events: list[dict[str, Any]]) -> float:
     if not completed:
         return 0.0
     return sum(1 for event in completed if event.get("passed")) / len(completed)
+
+
+def _expected_fate_coverage(task: AdaptiveBenchmarkTask, fate_counts: dict[str, int]) -> float:
+    expected = _expected_fates_for_task(task)
+    if not expected:
+        return 1.0
+    return round(sum(1 for fate in expected if fate_counts.get(fate, 0) > 0) / len(expected), 6)
+
+
+def _expected_fates_for_task(task: AdaptiveBenchmarkTask) -> list[str]:
+    if task.source_benchmark == "swe-bench-lite":
+        return ["explorer", "repair", "reviewer", "memory"]
+    if task.source_benchmark == "terminal-bench" and _induction_domain_for_task(task) == "repo_repair":
+        return ["explorer", "repair", "reviewer", "memory"]
+    if task.source_benchmark == "tau-bench":
+        return ["explorer", "builder", "reviewer", "memory"]
+    return ["explorer", "builder", "reviewer", "memory"]
+
+
+def _induction_domain_for_task(task: AdaptiveBenchmarkTask) -> str:
+    metadata = task.metadata
+    tags = {str(tag).lower() for tag in metadata.get("tags", [])}
+    category = str(metadata.get("category", "")).lower()
+    prompt = task.prompt.lower()
+    if task.source_benchmark == "swe-bench-lite":
+        return "repo_repair"
+    if task.source_benchmark == "terminal-bench" and (
+        category == "debugging" or "debugging" in tags or "swe-bench" in tags or "pytest" in prompt or "failing" in prompt or "bug" in prompt
+    ):
+        return "repo_repair"
+    return "generic"
+
+
+def _scoring_status(tasks: list[AdaptiveBenchmarkTask], run_official_scorer: bool) -> dict[str, Any]:
+    benchmark = tasks[0].source_benchmark if tasks else "adaptive"
+    if run_official_scorer:
+        return {
+            "benchmark": benchmark,
+            "official_score_status": "unsupported",
+            "scorer": None,
+            "scorer_pass_rate": 0.0,
+            "reason": "Official scorer execution is not wired for this adaptive tissue run yet.",
+        }
+    return {
+        "benchmark": benchmark,
+        "official_score_status": "not_run",
+        "scorer": None,
+        "scorer_pass_rate": 0.0,
+        "reason": "Official scorer was not requested; this run reports Ontocellia adaptive tissue metrics only.",
+    }
 
 
 def _average(values: list[float]) -> float:

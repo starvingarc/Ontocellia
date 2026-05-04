@@ -269,12 +269,16 @@ python -m ontocellia official-benchmark run \
   --model-profile deepseek \
   --limit 1 \
   --mode adaptive-tissue \
+  --tau-domain airline \
+  --structure-search \
   --output artifacts/official_benchmarks/tau_bench/deepseek_smoke
 ```
 
 Outputs include:
 
 - `official_tasks.jsonl`
+- `official_task_manifest.json`
+- `scoring_status.json`
 - `ontocellia_predictions.jsonl`
 - `official_results.json`
 - `structure_report.json`
@@ -282,7 +286,9 @@ Outputs include:
 - `ontocellia_summary.json`
 - per-task tissue traces under `tissue_traces/`
 
-Use `--task-id` for one specific official task, or `--full` only when you intend to run the full selected benchmark. API keys are read from the configured model profile and are not written into artifacts.
+Use `--task-id` for one specific official task, or `--full` only when you intend to run the full selected benchmark. Use `--split` for SWE-bench Lite, `--source-dir` for local Terminal-Bench or tau-bench checkouts, and `--run-official-scorer` only when the scorer is wired and intentionally requested. API keys are read from the configured model profile and are not written into artifacts.
+
+For non-BFCL runs, `official_score_status` is explicit. `not_run` means the run used official task data but only reported Ontocellia adaptive tissue metrics.
 
 BFCL is kept as a provider/tool-call baseline:
 
