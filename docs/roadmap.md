@@ -1,6 +1,6 @@
 # Roadmap
 
-Ontocellia is being built as a framework-first developmental agent tissue system. The current foundation includes genome, cell, induction, LLM effector, developmental field, organ selection, communication, context homeostasis, context metabolism, output metabolism, validation-runner, MCP-adapter, mutation-selection, complete-demo, interactive TUI, app server, single-stem development, tissue benchmark, extracellular tool runtime, and adaptive benchmark protocol layers.
+Ontocellia is being built as a framework-first developmental agent tissue system. The current foundation includes genome, cell, induction, LLM effector, developmental field, organ selection, communication, context homeostasis, context metabolism, output metabolism, validation-runner, MCP-adapter, mutation-selection, complete-demo, interactive TUI, app server, single-stem development, tissue benchmark, extracellular tool runtime, adaptive benchmark protocol, and structure search layers.
 
 ## Completed
 
@@ -24,16 +24,10 @@ Ontocellia is being built as a framework-first developmental agent tissue system
 - Phase 17: Living tissue app server with HTTP and WebSocket APIs
 - Phase 18: Context metabolism and matrix remodeling layer
 - Phase 19: Output metabolism for tool and validation output
-
-## Next
-
-- Phase 20: Web Lab petri-dish frontend implementation based on the committed design concept.
-- Phase 21: Official harness expansion for tau-bench, SWE-bench Lite, Terminal-Bench, and multi-agent collaboration suites.
+- Phase 22: Structure search and tissue variant trials
 
 ## Adaptive Structure Roadmap
 
-- Phase 22: Structure search and tissue variant trials
-  Grow multiple tissue variants in parallel and compare fate distribution, validation score, cost, handoff completion, matrix reuse, and regeneration recovery ticks.
 - Phase 23: Cell / gene / matrix contribution attribution
   Trace which cells, gene-expression events, handoffs, tool results, and matrix records contributed to success or failure.
 - Phase 24: Resource competition and population pressure
@@ -42,6 +36,11 @@ Ontocellia is being built as a framework-first developmental agent tissue system
   Preserve early structural diversity, increase fate lock as evidence stabilizes, and allow local reprogramming after repeated failure.
 - Phase 26: Selection solidification v2
   Solidify repeatedly effective tissue structures, induction priors, and gene-regulatory biases into reusable developmental tendencies.
+
+## Deferred
+
+- Phase 20: Web Lab petri-dish frontend implementation based on the committed design concept.
+- Phase 21: Official harness expansion for tau-bench, SWE-bench Lite, Terminal-Bench, and multi-agent collaboration suites.
 
 ## Product Direction
 

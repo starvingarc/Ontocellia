@@ -31,6 +31,7 @@ from ontocellia.framework import (
     MutationSelectionRuntime,
     OfficialBenchmarkRunner,
     OrganValidationResult,
+    StructureSearchRunner,
     TemplateInductionCompiler,
     TissueRuntime,
     BenchmarkSuite,
@@ -178,6 +179,15 @@ def build_parser() -> argparse.ArgumentParser:
     official_run.add_argument("--mode", choices=["adaptive-tissue", "provider-baseline"], default=None)
     official_run.add_argument("--category", default="BFCL_v3_simple")
     official_run.add_argument("--output", type=Path, default=Path("artifacts/official_benchmarks/bfcl/run"))
+
+    structure_parser = subparsers.add_parser("structure-search", help="Run deterministic tissue structure variant search.")
+    structure_parser.add_argument("--task", required=True)
+    structure_parser.add_argument("--domain", default="repo_repair")
+    structure_parser.add_argument("--effector", choices=["mock-llm", "llm"], default="mock-llm")
+    structure_parser.add_argument("--model-profile")
+    structure_parser.add_argument("--steps", type=int, default=6)
+    structure_parser.add_argument("--seed", type=int, default=7)
+    structure_parser.add_argument("--output", type=Path, default=Path("artifacts/structure_search"))
 
     subparsers.add_parser("tui", help="Start the interactive Ontocellia TUI.")
 
@@ -471,6 +481,19 @@ def run_official_benchmark(args: argparse.Namespace) -> None:
         raise SystemExit(str(error)) from error
     print(f"Official benchmark summary written to {result.summary_path}")
     print(f"Official benchmark report written to {result.report_path}")
+
+
+def run_structure_search(args: argparse.Namespace) -> None:
+    report = StructureSearchRunner(
+        task=args.task,
+        domain=args.domain,
+        effector=args.effector,
+        model_profile=args.model_profile,
+        steps=args.steps,
+        seed=args.seed,
+    ).run(args.output)
+    print(f"Structure search written to {report.output_dir}")
+    print(f"Selected variant: {report.selected_variant}")
 
 
 def run_server(args: argparse.Namespace) -> None:
@@ -790,6 +813,7 @@ def main(argv: list[str] | None = None) -> None:
         "demo",
         "benchmark",
         "official-benchmark",
+        "structure-search",
         "tui",
         "server",
         "config",
@@ -816,6 +840,8 @@ def main(argv: list[str] | None = None) -> None:
             run_benchmark(args)
         elif args.command == "official-benchmark":
             run_official_benchmark(args)
+        elif args.command == "structure-search":
+            run_structure_search(args)
         elif args.command == "tui":
             run_tui()
         elif args.command == "server":

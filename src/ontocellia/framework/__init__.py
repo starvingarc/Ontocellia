@@ -53,6 +53,7 @@ from .official_benchmark import OfficialBenchmarkRunResult, OfficialBenchmarkRun
 from .output import OutputDigest, OutputMetabolismPolicy, OutputMetabolismRuntime, digest_output
 from .selection import OrganFeedbackSignal, OrganSelectionField, OrganSelectionReport, OrganSelectionTarget, OrganValidationResult
 from .specs import load_agent_genome, load_task_microenvironment
+from .structure_search import StructureSearchReport, StructureSearchRunner, StructureTrialResult, StructureVariant, builtin_structure_variants
 from .topology import TissueTopology, TopologyNode
 from .validation import ValidationHookPolicy, ValidationHookRequest, ValidationHookRunner
 from .benchmark import BenchmarkRunResult, BenchmarkResult, BenchmarkSuite, BenchmarkTask, TissueBenchmarkRunner
@@ -121,6 +122,10 @@ __all__ = [
     "ReceptorProfile",
     "RegulatoryElement",
     "StemCellState",
+    "StructureSearchReport",
+    "StructureSearchRunner",
+    "StructureTrialResult",
+    "StructureVariant",
     "TaskMicroenvironment",
     "InductionDraft",
     "InductionRequest",
@@ -154,6 +159,7 @@ __all__ = [
     "ValidationHookPolicy",
     "ValidationHookRequest",
     "ValidationHookRunner",
+    "builtin_structure_variants",
     "digest_output",
     "config_path",
     "load_agent_genome",

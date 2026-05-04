@@ -237,6 +237,28 @@ Outputs:
 
 The TUI also supports `/benchmark`, which runs the mock MiniBench and prints a score summary.
 
+## Search Tissue Structures
+
+Structure search compares deterministic tissue variants induced from the same task. It is used to ask which organization fits the current environment better, not which provider is strongest.
+
+```bash
+python -m ontocellia structure-search \
+  --task "Fix failing tests while preserving behavior." \
+  --domain repo_repair \
+  --effector mock-llm \
+  --steps 6 \
+  --seed 7 \
+  --output artifacts/structure_search
+```
+
+Outputs:
+
+- `structure_search_summary.json`
+- `structure_trials.csv`
+- `structure_search_report.md`
+- `selected_variant.json`
+- per-variant tissue summaries, traces, and action intents under `variants/`
+
 ## Run Adaptive Benchmark Data
 
 Official benchmark runs use upstream task shapes and evaluate Ontocellia as a tissue. The default mode for non-BFCL benchmarks is `adaptive-tissue`.

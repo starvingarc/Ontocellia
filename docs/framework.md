@@ -83,6 +83,12 @@ The official benchmark harness evaluates Ontocellia as an adaptive tissue, not a
 
 BFCL remains available as a provider/tool-call baseline because simple function calling is usually solved well by the underlying model alone. Ontocellia's main benchmark path targets harder collaborative settings such as tau-bench, Terminal-Bench, MultiAgentBench/MARBLE-style tasks, and SWE-bench-style repo repair.
 
+## Structure Search
+
+Structure search grows several deterministic tissue variants from the same task induction and compares their organization. The first built-in variants are baseline, repair-heavy, review-heavy, memory-heavy, and lean. Each trial runs the normal single-stem tissue development, mock or configured effectors, communication, matrix deposition, context metabolism, and organ feedback loop.
+
+The selection score combines validation score, fate match, matrix reuse, handoff completion, regeneration recovery, cost efficiency, and fate diversity. The selected variant is the highest-scoring tissue structure under the same seed, with stable tie-breaking by variant name.
+
 ## Extracellular Tool Runtime
 
 The tool runtime sits between structured `ActionIntent` records and real local effects. It normalizes intents into `ToolInvocation` records, routes them through adapter-specific executors, and returns `ToolResult` records. The older `ExecutionRuntime` API remains as a compatibility wrapper.
