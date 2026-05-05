@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import ast
+import shlex
 import subprocess
 import time
 import urllib.request
@@ -179,6 +180,9 @@ class AdaptiveTissueBenchmarkRunner:
         seed: int = 7,
         structure_search: bool = False,
         run_official_scorer: bool = False,
+        official_scorer_command: str | None = None,
+        official_scorer_timeout: float = 300.0,
+        official_scorer_cwd: str | Path | None = None,
     ) -> None:
         self.model_profile = model_profile
         self.dry_run = dry_run
@@ -186,6 +190,9 @@ class AdaptiveTissueBenchmarkRunner:
         self.seed = seed
         self.structure_search = structure_search
         self.run_official_scorer = run_official_scorer
+        self.official_scorer_command = official_scorer_command
+        self.official_scorer_timeout = official_scorer_timeout
+        self.official_scorer_cwd = Path(official_scorer_cwd) if official_scorer_cwd is not None else None
 
     def run_tasks(self, tasks: list[AdaptiveBenchmarkTask], output: str | Path) -> AdaptiveBenchmarkReport:
         output_dir = Path(output)
@@ -193,7 +200,7 @@ class AdaptiveTissueBenchmarkRunner:
         traces_dir = output_dir / "tissue_traces"
         traces_dir.mkdir(exist_ok=True)
         provider = MockLLMProvider() if self.dry_run else resolve_effector_provider("llm", model_profile=self.model_profile)
-        scoring = _scoring_status(tasks, self.run_official_scorer)
+        scoring = _scoring_status(tasks, self.run_official_scorer, self.official_scorer_command)
         task_reports = []
         predictions = []
         for task in tasks:
@@ -214,6 +221,18 @@ class AdaptiveTissueBenchmarkRunner:
             _write_jsonl(task_dir / "action_intents.jsonl", actions)
             task_reports.append(task_report)
             predictions.append({"id": task.id, "source_benchmark": task.source_benchmark, "actions": actions, "metrics": metrics})
+        _write_jsonl(output_dir / "official_tasks.jsonl", [task.as_dict() for task in tasks])
+        _write_json(output_dir / "official_task_manifest.json", {"tasks": [task.as_dict() for task in tasks]})
+        _write_jsonl(output_dir / "ontocellia_predictions.jsonl", predictions)
+        scoring = _finalize_scoring_status(
+            output_dir=output_dir,
+            tasks=tasks,
+            run_official_scorer=self.run_official_scorer,
+            official_scorer_command=self.official_scorer_command,
+            official_scorer_timeout=self.official_scorer_timeout,
+            official_scorer_cwd=self.official_scorer_cwd,
+        )
+        _apply_scoring_to_reports(task_reports, predictions, scoring)
         summary = {
             "benchmark": tasks[0].source_benchmark if tasks else "adaptive",
             "mode": "adaptive-tissue",
@@ -225,8 +244,6 @@ class AdaptiveTissueBenchmarkRunner:
         }
         structure = {"mode": "adaptive-tissue", "tasks": task_reports}
         _write_json(output_dir / "run_config.json", {"mode": "adaptive-tissue", "model_profile": self.model_profile, "dry_run": self.dry_run, "structure_search": self.structure_search})
-        _write_jsonl(output_dir / "official_tasks.jsonl", [task.as_dict() for task in tasks])
-        _write_json(output_dir / "official_task_manifest.json", {"tasks": [task.as_dict() for task in tasks]})
         _write_json(output_dir / "scoring_status.json", scoring)
         _write_json(output_dir / "ontocellia_summary.json", summary)
         _write_json(output_dir / "structure_report.json", structure)
@@ -270,6 +287,9 @@ class OfficialBenchmarkRunner:
         tau_domain: str = "airline",
         structure_search: bool = False,
         run_official_scorer: bool = False,
+        official_scorer_command: str | None = None,
+        official_scorer_timeout: float = 300.0,
+        official_scorer_cwd: str | Path | None = None,
     ) -> OfficialBenchmarkRunResult | AdaptiveBenchmarkReport:
         selected_mode = mode or ("provider-baseline" if benchmark == "bfcl" else "adaptive-tissue")
         if not full and limit is None and task_id is None:
@@ -282,6 +302,9 @@ class OfficialBenchmarkRunner:
                 dry_run=dry_run,
                 structure_search=structure_search,
                 run_official_scorer=run_official_scorer,
+                official_scorer_command=official_scorer_command,
+                official_scorer_timeout=official_scorer_timeout,
+                official_scorer_cwd=official_scorer_cwd,
             ).run_tasks(tasks, output)
         if benchmark != "bfcl":
             raise ValueError(f"{benchmark} only supports adaptive-tissue mode")
@@ -717,8 +740,16 @@ def _induction_domain_for_task(task: AdaptiveBenchmarkTask) -> str:
     return "generic"
 
 
-def _scoring_status(tasks: list[AdaptiveBenchmarkTask], run_official_scorer: bool) -> dict[str, Any]:
+def _scoring_status(tasks: list[AdaptiveBenchmarkTask], run_official_scorer: bool, official_scorer_command: str | None = None) -> dict[str, Any]:
     benchmark = tasks[0].source_benchmark if tasks else "adaptive"
+    if run_official_scorer and official_scorer_command:
+        return {
+            "benchmark": benchmark,
+            "official_score_status": "pending",
+            "scorer": "external_command",
+            "scorer_pass_rate": 0.0,
+            "reason": "Official scorer command requested and will run after predictions are written.",
+        }
     if run_official_scorer:
         return {
             "benchmark": benchmark,
@@ -734,6 +765,73 @@ def _scoring_status(tasks: list[AdaptiveBenchmarkTask], run_official_scorer: boo
         "scorer_pass_rate": 0.0,
         "reason": "Official scorer was not requested; this run reports Ontocellia adaptive tissue metrics only.",
     }
+
+
+def _finalize_scoring_status(
+    *,
+    output_dir: Path,
+    tasks: list[AdaptiveBenchmarkTask],
+    run_official_scorer: bool,
+    official_scorer_command: str | None,
+    official_scorer_timeout: float,
+    official_scorer_cwd: Path | None,
+) -> dict[str, Any]:
+    if not run_official_scorer or not official_scorer_command:
+        return _scoring_status(tasks, run_official_scorer, official_scorer_command)
+    return _run_official_scorer_command(
+        benchmark=tasks[0].source_benchmark if tasks else "adaptive",
+        command=official_scorer_command,
+        output_dir=output_dir,
+        timeout=official_scorer_timeout,
+        cwd=official_scorer_cwd or Path.cwd(),
+    )
+
+
+def _run_official_scorer_command(*, benchmark: str, command: str, output_dir: Path, timeout: float, cwd: Path) -> dict[str, Any]:
+    started = time.perf_counter()
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "official_command.sh").write_text(command + "\n", encoding="utf-8")
+    try:
+        completed = subprocess.run(
+            shlex.split(command),
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            shell=False,
+        )
+        stdout = completed.stdout
+        stderr = completed.stderr
+        exit_code = completed.returncode
+        status = "run" if exit_code == 0 else "run_failed"
+        reason = "Official scorer command completed." if exit_code == 0 else "Official scorer command returned a non-zero exit code."
+    except subprocess.TimeoutExpired as error:
+        stdout = error.stdout if isinstance(error.stdout, str) else (error.stdout or b"").decode("utf-8", errors="replace")
+        stderr = error.stderr if isinstance(error.stderr, str) else (error.stderr or b"").decode("utf-8", errors="replace")
+        exit_code = None
+        status = "run_failed"
+        reason = f"Official scorer command timed out after {timeout} seconds."
+    (output_dir / "official_stdout.log").write_text(stdout, encoding="utf-8")
+    (output_dir / "official_stderr.log").write_text(stderr, encoding="utf-8")
+    return {
+        "benchmark": benchmark,
+        "official_score_status": status,
+        "scorer": "external_command",
+        "command": command,
+        "cwd": str(cwd),
+        "exit_code": exit_code,
+        "scorer_pass_rate": 1.0 if status == "run" else 0.0,
+        "latency_seconds": round(time.perf_counter() - started, 6),
+        "reason": reason,
+    }
+
+
+def _apply_scoring_to_reports(task_reports: list[dict[str, Any]], predictions: list[dict[str, Any]], scoring: dict[str, Any]) -> None:
+    for item in [*task_reports, *predictions]:
+        metrics = item.get("metrics")
+        if isinstance(metrics, dict):
+            metrics["official_score_status"] = scoring["official_score_status"]
+            metrics["scorer_pass_rate"] = float(scoring.get("scorer_pass_rate", 0.0))
 
 
 def _average(values: list[float]) -> float:

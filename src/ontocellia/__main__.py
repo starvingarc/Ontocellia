@@ -183,6 +183,9 @@ def build_parser() -> argparse.ArgumentParser:
     official_run.add_argument("--tau-domain", choices=["airline", "retail"], default="airline")
     official_run.add_argument("--structure-search", action="store_true")
     official_run.add_argument("--run-official-scorer", action="store_true")
+    official_run.add_argument("--official-scorer-command")
+    official_run.add_argument("--official-scorer-timeout", type=float, default=300.0)
+    official_run.add_argument("--official-scorer-cwd", type=Path)
     official_run.add_argument("--output", type=Path, default=Path("artifacts/official_benchmarks/bfcl/run"))
 
     structure_parser = subparsers.add_parser("structure-search", help="Run deterministic tissue structure variant search.")
@@ -486,6 +489,9 @@ def run_official_benchmark(args: argparse.Namespace) -> None:
             tau_domain=args.tau_domain,
             structure_search=args.structure_search,
             run_official_scorer=args.run_official_scorer,
+            official_scorer_command=args.official_scorer_command,
+            official_scorer_timeout=args.official_scorer_timeout,
+            official_scorer_cwd=args.official_scorer_cwd,
         )
     except ValueError as error:
         raise SystemExit(str(error)) from error

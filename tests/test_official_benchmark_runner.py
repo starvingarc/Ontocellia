@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -141,6 +142,43 @@ def test_official_benchmark_cli_runs_adaptive_tissue_fixture(tmp_path: Path, mon
     assert (output / "adaptation_report.md").exists()
 
 
+def test_official_benchmark_cli_runs_explicit_scorer_command(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ONTOCELLIA_CONFIG_DIR", str(tmp_path / "config"))
+    save_user_config(
+        OntocelliaUserConfig(
+            models={"default": "mock", "profiles": {"mock": ModelProfile(provider="mock-llm", model="mock-llm")}}
+        )
+    )
+    output = tmp_path / "cli-scorer"
+
+    main(
+        [
+            "official-benchmark",
+            "run",
+            "--benchmark",
+            "tau-bench",
+            "--model-profile",
+            "mock",
+            "--limit",
+            "1",
+            "--mode",
+            "adaptive-tissue",
+            "--dry-run",
+            "--run-official-scorer",
+            "--official-scorer-command",
+            f"{sys.executable} -c \"print('cli scorer ok')\"",
+            "--official-scorer-cwd",
+            str(tmp_path),
+            "--output",
+            str(output),
+        ]
+    )
+
+    scoring = json.loads((output / "scoring_status.json").read_text(encoding="utf-8"))
+    assert scoring["official_score_status"] == "run"
+    assert "cli scorer ok" in (output / "official_stdout.log").read_text(encoding="utf-8")
+
+
 def test_official_adaptive_run_writes_official_tasks_and_scoring_status(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ONTOCELLIA_CONFIG_DIR", str(tmp_path / "config"))
     save_user_config(
@@ -233,6 +271,51 @@ def test_official_runner_records_provider_errors_without_aborting(tmp_path: Path
     trace = json.loads((tmp_path / "tissue_traces" / "tau-timeout" / "tissue_trace.json").read_text(encoding="utf-8"))
     assert structure["tasks"][0]["metrics"]["provider_call_errors"] > 0
     assert any(event["type"] == "official_benchmark_provider_error" for event in trace)
+
+
+def test_official_scorer_command_runs_only_when_explicit(tmp_path: Path) -> None:
+    task = AdaptiveBenchmarkTask(
+        id="terminal-scorer",
+        source_benchmark="terminal-bench",
+        prompt="Inspect files and report.",
+        metadata={"check_command": "official terminal-bench parser: pytest"},
+    )
+
+    result = AdaptiveTissueBenchmarkRunner(
+        dry_run=True,
+        run_official_scorer=True,
+        official_scorer_command=f"{sys.executable} -c \"print('official scorer ok')\"",
+        official_scorer_cwd=tmp_path,
+    ).run_tasks([task], tmp_path)
+
+    scoring = json.loads((tmp_path / "scoring_status.json").read_text(encoding="utf-8"))
+    summary = json.loads(result.summary_path.read_text(encoding="utf-8"))
+    assert scoring["official_score_status"] == "run"
+    assert scoring["scorer_pass_rate"] == 1.0
+    assert "official scorer ok" in (tmp_path / "official_stdout.log").read_text(encoding="utf-8")
+    assert summary["official_score_status"] == "run"
+
+
+def test_official_scorer_command_records_failed_run(tmp_path: Path) -> None:
+    task = AdaptiveBenchmarkTask(
+        id="terminal-scorer-fail",
+        source_benchmark="terminal-bench",
+        prompt="Inspect files and report.",
+        metadata={"check_command": "official terminal-bench parser: pytest"},
+    )
+
+    AdaptiveTissueBenchmarkRunner(
+        dry_run=True,
+        run_official_scorer=True,
+        official_scorer_command=f"{sys.executable} -c \"import sys; print('bad scorer'); sys.exit(2)\"",
+        official_scorer_cwd=tmp_path,
+    ).run_tasks([task], tmp_path)
+
+    scoring = json.loads((tmp_path / "scoring_status.json").read_text(encoding="utf-8"))
+    assert scoring["official_score_status"] == "run_failed"
+    assert scoring["exit_code"] == 2
+    assert scoring["scorer_pass_rate"] == 0.0
+    assert "bad scorer" in (tmp_path / "official_stdout.log").read_text(encoding="utf-8")
 
 
 def test_provider_baseline_scores_bfcl_mock_predictions(tmp_path: Path) -> None:

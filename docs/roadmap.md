@@ -27,11 +27,10 @@ Ontocellia is being built as a framework-first developmental agent tissue system
 - Phase 22: Structure search and tissue variant trials
 - Phase 23: Official benchmark source fidelity and scoring-status reporting
 - Phase 24: Official benchmark structure-search integration
+- Phase 25: Official scorer execution wrapper
 
 ## Benchmark Feedback Roadmap
 
-- Phase 25: Official scorer execution
-  Wire supported official scorers behind explicit flags and record pass/fail only when the official scorer actually runs.
 - Phase 26: Benchmark-induced repair specialization
   Improve task-to-environment induction so repo/debugging tasks reliably grow repair, review, exploration, and memory fates without benchmark-specific effectors.
 

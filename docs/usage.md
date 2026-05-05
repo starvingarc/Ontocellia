@@ -290,6 +290,19 @@ Use `--task-id` for one specific official task, or `--full` only when you intend
 
 For non-BFCL runs, `official_score_status` is explicit. `not_run` means the run used official task data but only reported Ontocellia adaptive tissue metrics.
 
+To run an installed official scorer, pass an explicit command. The command is split with `shlex`, does not use a shell, and writes `official_stdout.log`, `official_stderr.log`, and `scoring_status.json`.
+
+```bash
+python -m ontocellia official-benchmark run \
+  --benchmark terminal-bench \
+  --model-profile deepseek \
+  --limit 1 \
+  --mode adaptive-tissue \
+  --run-official-scorer \
+  --official-scorer-command "tb run --dataset-path artifacts/official_sources/terminal-bench/original-tasks --task-id example" \
+  --output artifacts/official_benchmarks/terminal_with_scorer
+```
+
 BFCL is kept as a provider/tool-call baseline:
 
 ```bash
