@@ -13,6 +13,7 @@ from ontocellia.framework.official_benchmark import (
     OfficialBenchmarkAdapter,
     OfficialBenchmarkRunner,
 )
+from ontocellia.framework.core import TissueRuntime
 from ontocellia.framework.model_config import ModelProfile, OntocelliaUserConfig, save_user_config
 
 
@@ -311,6 +312,23 @@ def test_official_runner_records_provider_errors_without_aborting(tmp_path: Path
     assert any(event["type"] == "official_benchmark_provider_error" for event in trace)
 
 
+def test_official_runner_reraises_non_provider_framework_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    task = AdaptiveBenchmarkTask(
+        id="tau-framework-bug",
+        source_benchmark="tau-bench",
+        prompt="Book a reservation using official tau-bench tools.",
+        metadata={"tools": [{"name": "book_reservation"}], "policy": "official tau-bench airline environment task"},
+    )
+
+    def broken_communicate(self: TissueRuntime, actions=None):  # type: ignore[no-untyped-def]
+        raise AssertionError("framework bug")
+
+    monkeypatch.setattr(TissueRuntime, "communicate", broken_communicate)
+
+    with pytest.raises(AssertionError, match="framework bug"):
+        AdaptiveTissueBenchmarkRunner(model_profile="mock", dry_run=True).run_tasks([task], tmp_path)
+
+
 def test_official_scorer_command_runs_only_when_explicit(tmp_path: Path) -> None:
     task = AdaptiveBenchmarkTask(
         id="terminal-scorer",
@@ -328,10 +346,15 @@ def test_official_scorer_command_runs_only_when_explicit(tmp_path: Path) -> None
 
     scoring = json.loads((tmp_path / "scoring_status.json").read_text(encoding="utf-8"))
     summary = json.loads(result.summary_path.read_text(encoding="utf-8"))
+    structure = json.loads(result.structure_path.read_text(encoding="utf-8"))
+    task_summary = json.loads((tmp_path / "tissue_traces" / "terminal-scorer" / "tissue_summary.json").read_text(encoding="utf-8"))
     assert scoring["official_score_status"] == "run"
     assert scoring["scorer_pass_rate"] == 1.0
     assert "official scorer ok" in (tmp_path / "official_stdout.log").read_text(encoding="utf-8")
     assert summary["official_score_status"] == "run"
+    assert summary["average_final_task_success"] == 1.0
+    assert structure["tasks"][0]["metrics"]["final_task_success"] == 1.0
+    assert task_summary["metrics"]["final_task_success"] == 1.0
 
 
 def test_official_scorer_command_records_failed_run(tmp_path: Path) -> None:

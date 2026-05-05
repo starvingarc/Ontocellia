@@ -407,7 +407,10 @@ def _list_workspace(invocation: ToolInvocation, policy: ToolPolicy) -> ToolResul
 
 
 def _git_tool(invocation: ToolInvocation, policy: ToolPolicy) -> ToolResult:
-    command = _git_command(invocation)
+    try:
+        command = _git_command(invocation)
+    except ValueError as error:
+        return _tool_result(invocation, "skipped", False, 0.0, str(error), risk=0.3, matrix_tags=["git", invocation.operation])
     if not policy.allows_git_command(command):
         return _tool_result(invocation, "skipped", False, 0.0, f"Git command not allowlisted: {command}", risk=0.25, matrix_tags=["git", invocation.operation])
     execution = _run_command(_execution_request_from_invocation(invocation, command=command), policy, command, require_allowlist=False)
@@ -418,13 +421,24 @@ def _git_command(invocation: ToolInvocation) -> str:
     if invocation.operation == "status":
         return "git status --short"
     if invocation.operation == "show":
-        target = str(invocation.payload.get("target") or invocation.target or "HEAD")
+        target = _safe_git_show_target(str(invocation.payload.get("target") or invocation.target or "HEAD"))
         return f"git show {target}"
     if invocation.operation == "log":
         limit = int(invocation.payload.get("limit", 5))
         return f"git log --oneline -n {max(1, min(limit, 50))}"
     path = invocation.path or invocation.payload.get("path")
     return f"git diff -- {path}" if path else "git diff"
+
+
+def _safe_git_show_target(target: str) -> str:
+    value = target.strip()
+    try:
+        parts = shlex.split(value)
+    except ValueError as error:
+        raise ValueError(f"unsafe git show target: {target}") from error
+    if not value or len(parts) != 1 or parts[0].startswith("-"):
+        raise ValueError(f"unsafe git show target: {target}")
+    return parts[0]
 
 
 def _command_tool(invocation: ToolInvocation, policy: ToolPolicy, command: str, *, require_allowlist: bool) -> ToolResult:

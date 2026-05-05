@@ -191,6 +191,27 @@ def test_git_read_adapters_are_read_only(tmp_path: Path) -> None:
     assert "modified" in results[0].evidence.lower() or "tracked.py" in results[0].evidence
 
 
+def test_git_show_rejects_option_like_target(tmp_path: Path) -> None:
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True, text=True)
+    tissue = make_tissue(tmp_path, interfaces=["git.show"])
+
+    results = ExtracellularToolRuntime().execute(
+        tissue,
+        [
+            {
+                "cell_id": 1,
+                "intent_type": "review_output",
+                "target": "--help",
+                "payload": {"interface": "git.show", "target": "--help"},
+            }
+        ],
+        policy(tmp_path, allowed_interfaces=["git.show"]),
+    )
+
+    assert results[0].status == "skipped"
+    assert "unsafe git show target" in results[0].evidence
+
+
 def test_shell_command_requires_exact_allowlist_and_no_shell_execution(tmp_path: Path) -> None:
     marker = tmp_path / "marker.txt"
     command = f"{sys.executable} -c \"print('safe')\" ; touch {marker}"

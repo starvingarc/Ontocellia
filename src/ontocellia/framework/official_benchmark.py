@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-import json
 import ast
+import json
+import re
 import shlex
 import subprocess
 import time
+import urllib.error
 import urllib.request
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
@@ -17,7 +19,7 @@ from ontocellia.framework.cell import CellPosition
 from ontocellia.framework.communication import MatrixRecord
 from ontocellia.framework.core import ExtracellularInterface, MorphogenField, Niche, TaskMicroenvironment, TissueRuntime
 from ontocellia.framework.induction import InductionRequest, TemplateInductionCompiler
-from ontocellia.framework.llm import CellPrompt, EffectorRuntime, MockLLMProvider, OpenAICompatibleProvider
+from ontocellia.framework.llm import ActionIntent, CellPrompt, EffectorRuntime, LLMResponse, MockLLMProvider, OpenAICompatibleProvider
 from ontocellia.framework.model_config import load_secret_env, load_user_config, resolve_effector_provider
 from ontocellia.framework.selection import OrganValidationResult
 from ontocellia.framework.structure_search import StructureVariant, builtin_structure_variants
@@ -202,6 +204,7 @@ class AdaptiveTissueBenchmarkRunner:
         provider = MockLLMProvider() if self.dry_run else resolve_effector_provider("llm", model_profile=self.model_profile)
         scoring = _scoring_status(tasks, self.run_official_scorer, self.official_scorer_command)
         task_reports = []
+        task_artifacts: list[tuple[Path, AdaptiveBenchmarkTask, dict[str, Any]]] = []
         predictions = []
         for task in tasks:
             task_dir = traces_dir / task.id
@@ -216,7 +219,7 @@ class AdaptiveTissueBenchmarkRunner:
                 metrics = selected["metrics"]
                 actions = selected["actions"]
                 task_report = {"task_id": task.id, "source_benchmark": task.source_benchmark, "metrics": metrics}
-            _write_json(task_dir / "tissue_summary.json", {"task": task.as_dict(), "metrics": metrics})
+            task_artifacts.append((task_dir, task, metrics))
             (task_dir / "tissue_trace.json").write_text(json.dumps(selected["trace"], indent=2, sort_keys=True), encoding="utf-8")
             _write_jsonl(task_dir / "action_intents.jsonl", actions)
             task_reports.append(task_report)
@@ -233,6 +236,8 @@ class AdaptiveTissueBenchmarkRunner:
             official_scorer_cwd=self.official_scorer_cwd,
         )
         _apply_scoring_to_reports(task_reports, predictions, scoring)
+        for task_dir, task, metrics in task_artifacts:
+            _write_json(task_dir / "tissue_summary.json", {"task": task.as_dict(), "metrics": metrics})
         summary = {
             "benchmark": tasks[0].source_benchmark if tasks else "adaptive",
             "mode": "adaptive-tissue",
@@ -240,6 +245,7 @@ class AdaptiveTissueBenchmarkRunner:
             "dry_run": self.dry_run,
             "structure_search": self.structure_search,
             "official_score_status": scoring["official_score_status"],
+            "average_final_task_success": _average([item["metrics"]["final_task_success"] for item in task_reports]),
             "average_structure_efficiency": _average([item["metrics"]["structure_efficiency"] for item in task_reports]),
         }
         structure = {"mode": "adaptive-tissue", "tasks": task_reports}
@@ -624,16 +630,59 @@ def _seed_official_tissue(task: AdaptiveBenchmarkTask, seed: int) -> TissueRunti
 
 
 def _safe_execute_tissue(tissue: TissueRuntime, provider: Any) -> list[dict[str, Any]]:
-    try:
-        return tissue.execute(effectors=EffectorRuntime(provider))
-    except Exception as error:
-        tissue.trace.record(
-            "official_benchmark_provider_error",
-            provider=getattr(provider, "name", provider.__class__.__name__),
-            error_type=error.__class__.__name__,
-            error=str(error),
-        )
-        return []
+    return tissue.execute(effectors=EffectorRuntime(_BenchmarkProviderGuard(provider, tissue)))
+
+
+_PROVIDER_ERROR_TYPES = (
+    TimeoutError,
+    ConnectionError,
+    RuntimeError,
+    urllib.error.URLError,
+    json.JSONDecodeError,
+)
+
+
+@dataclass(slots=True)
+class _BenchmarkProviderGuard:
+    provider: Any
+    tissue: TissueRuntime
+
+    @property
+    def name(self) -> str:
+        return getattr(self.provider, "name", self.provider.__class__.__name__)
+
+    def complete(self, prompt: CellPrompt) -> LLMResponse:
+        try:
+            return self.provider.complete(prompt)
+        except _PROVIDER_ERROR_TYPES as error:
+            cell_id = int(prompt.context.get("cell_id", 0))
+            fate = str(prompt.context.get("fate", "unknown"))
+            self.tissue.trace.record(
+                "official_benchmark_provider_error",
+                provider=self.name,
+                cell_id=cell_id,
+                error_type=error.__class__.__name__,
+                error=str(error),
+            )
+            intent = ActionIntent(
+                cell_id=cell_id,
+                fate=fate,
+                expressed_gene_ids=[str(item) for item in prompt.context.get("expressed_gene_ids", [])],
+                intent_type="record_memory",
+                target=str(prompt.context.get("position", {}).get("node_id", "benchmark")),
+                rationale=f"Provider {self.name} failed during official benchmark execution: {error.__class__.__name__}.",
+                required_interfaces=[],
+                confidence=0.0,
+                validation_hooks=[str(item) for item in prompt.context.get("validation_hooks", [])],
+                payload={"provider_error": str(error), "matrix_tags": ["provider_error", fate]},
+            )
+            return LLMResponse(
+                content=intent.rationale,
+                parsed_intent=intent,
+                raw={"provider_error": error.__class__.__name__},
+                model=self.name,
+                usage={},
+            )
 
 
 def _merge_official_environment(target: TaskMicroenvironment, source: TaskMicroenvironment) -> None:
@@ -748,24 +797,31 @@ def _is_repo_repair_like_task(task: AdaptiveBenchmarkTask) -> bool:
         "software-engineering",
         "swe-bench",
     }
-    repair_terms = {
-        "build",
+    repair_tokens = {
         "bug",
         "compatibility",
         "debug",
         "failing",
         "fix",
-        "implement",
+        "legacy",
         "modernize",
-        "optimize",
         "pytest",
         "regression",
-        "test",
     }
+    repair_phrases = {
+        "failing test",
+        "failing tests",
+        "fix test",
+        "fix tests",
+        "test failure",
+        "test failures",
+    }
+    prompt_tokens = set(re.findall(r"[a-z0-9_+-]+", prompt))
     return (
         category in repair_categories
         or bool(tags & repair_tags)
-        or any(term in prompt for term in repair_terms)
+        or bool(prompt_tokens & repair_tokens)
+        or any(phrase in prompt for phrase in repair_phrases)
     )
 
 
@@ -861,6 +917,8 @@ def _apply_scoring_to_reports(task_reports: list[dict[str, Any]], predictions: l
         if isinstance(metrics, dict):
             metrics["official_score_status"] = scoring["official_score_status"]
             metrics["scorer_pass_rate"] = float(scoring.get("scorer_pass_rate", 0.0))
+            if scoring["official_score_status"] == "run":
+                metrics["final_task_success"] = float(scoring.get("scorer_pass_rate", 0.0))
 
 
 def _average(values: list[float]) -> float:

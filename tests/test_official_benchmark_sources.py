@@ -146,6 +146,29 @@ parser_name: pytest
     assert not any(niche.required_fate == "repair" for niche in environment.niches)
 
 
+def test_terminal_generic_task_with_testing_language_stays_generic() -> None:
+    task = load_terminal_bench_task_from_yaml(
+        _terminal_task_yaml(
+            """
+instruction: During testing, compare every generated report with the expected output format.
+category: file-operations
+tags:
+  - data-processing
+parser_name: pytest
+"""
+        ),
+        task_id="report-comparator",
+    )
+    adapter = OfficialBenchmarkAdapter.for_benchmark("terminal-bench")
+
+    request = adapter.to_induction_request(task)
+    environment = adapter.to_microenvironment(task)
+
+    assert request.domain == "generic"
+    assert environment.morphogens.signal("repair_pressure") == 0.0
+    assert not any(niche.required_fate == "repair" for niche in environment.niches)
+
+
 def _terminal_task_yaml(content: str) -> Path:
     import tempfile
 
