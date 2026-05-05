@@ -162,7 +162,7 @@ class GenericOfficialBenchmarkAdapter:
             Niche("review-boundary", "reviewer", CellPosition("review-boundary", task.source_benchmark, ["builder-niche"], (3.0, 0.0, 0.0))),
             Niche("memory-niche", "memory", CellPosition("memory-niche", task.source_benchmark, ["planner-niche"], (1.0, 1.0, 0.0))),
         ]
-        if task.source_benchmark == "swe-bench-lite":
+        if _is_repo_repair_like_task(task):
             niches.append(Niche("repair-niche", "repair", CellPosition("repair-niche", task.source_benchmark, ["builder-niche"], (2.0, 1.0, 0.0))))
         environment = TaskMicroenvironment(task.prompt, morphogens, niches, interfaces)
         for record in records:
@@ -554,7 +554,7 @@ def _morphogens_for_task(task: AdaptiveBenchmarkTask) -> MorphogenField:
     signals = {"ambiguity": 0.7, "coordination_pressure": 0.75, "verification_pressure": 0.65, "memory_pressure": 0.45, "implementation_pressure": 0.6}
     if task.source_benchmark == "terminal-bench":
         signals.update({"execution_pressure": 0.8, "verification_pressure": 0.85})
-    if task.source_benchmark == "swe-bench-lite":
+    if _is_repo_repair_like_task(task):
         signals.update({"test_failure": 0.9, "repair_pressure": 0.85})
     if task.source_benchmark == "tau-bench":
         signals.update({"risk": 0.7, "planning_pressure": 0.75})
@@ -717,9 +717,7 @@ def _expected_fate_coverage(task: AdaptiveBenchmarkTask, fate_counts: dict[str, 
 
 
 def _expected_fates_for_task(task: AdaptiveBenchmarkTask) -> list[str]:
-    if task.source_benchmark == "swe-bench-lite":
-        return ["explorer", "repair", "reviewer", "memory"]
-    if task.source_benchmark == "terminal-bench" and _induction_domain_for_task(task) == "repo_repair":
+    if _is_repo_repair_like_task(task):
         return ["explorer", "repair", "reviewer", "memory"]
     if task.source_benchmark == "tau-bench":
         return ["explorer", "builder", "reviewer", "memory"]
@@ -727,17 +725,48 @@ def _expected_fates_for_task(task: AdaptiveBenchmarkTask) -> list[str]:
 
 
 def _induction_domain_for_task(task: AdaptiveBenchmarkTask) -> str:
+    if _is_repo_repair_like_task(task):
+        return "repo_repair"
+    return "generic"
+
+
+def _is_repo_repair_like_task(task: AdaptiveBenchmarkTask) -> bool:
     metadata = task.metadata
     tags = {str(tag).lower() for tag in metadata.get("tags", [])}
     category = str(metadata.get("category", "")).lower()
     prompt = task.prompt.lower()
     if task.source_benchmark == "swe-bench-lite":
-        return "repo_repair"
-    if task.source_benchmark == "terminal-bench" and (
-        category == "debugging" or "debugging" in tags or "swe-bench" in tags or "pytest" in prompt or "failing" in prompt or "bug" in prompt
-    ):
-        return "repo_repair"
-    return "generic"
+        return True
+    if task.source_benchmark != "terminal-bench":
+        return False
+    repair_categories = {"debugging", "software-engineering"}
+    repair_tags = {
+        "coding",
+        "debugging",
+        "legacy-modernization",
+        "optimization",
+        "software-engineering",
+        "swe-bench",
+    }
+    repair_terms = {
+        "build",
+        "bug",
+        "compatibility",
+        "debug",
+        "failing",
+        "fix",
+        "implement",
+        "modernize",
+        "optimize",
+        "pytest",
+        "regression",
+        "test",
+    }
+    return (
+        category in repair_categories
+        or bool(tags & repair_tags)
+        or any(term in prompt for term in repair_terms)
+    )
 
 
 def _scoring_status(tasks: list[AdaptiveBenchmarkTask], run_official_scorer: bool, official_scorer_command: str | None = None) -> dict[str, Any]:

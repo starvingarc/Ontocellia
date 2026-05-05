@@ -97,3 +97,59 @@ def test_non_dry_terminal_adapter_loads_official_source_dir(tmp_path: Path) -> N
     assert [task.id for task in tasks] == ["jsonl-aggregator"]
     assert tasks[0].prompt == "collect records"
 
+
+def test_terminal_software_engineering_task_induces_repo_repair_tissue() -> None:
+    task = load_terminal_bench_task_from_yaml(
+        _terminal_task_yaml(
+            """
+instruction: Modernize a legacy library, build it, and fix compatibility issues.
+category: software-engineering
+tags:
+  - coding
+  - legacy-modernization
+parser_name: pytest
+"""
+        ),
+        task_id="3d-model-format-legacy",
+    )
+    adapter = OfficialBenchmarkAdapter.for_benchmark("terminal-bench")
+
+    request = adapter.to_induction_request(task)
+    environment = adapter.to_microenvironment(task)
+
+    assert request.domain == "repo_repair"
+    assert environment.morphogens.signal("repair_pressure") > 0
+    assert environment.morphogens.signal("test_failure") > 0
+    assert any(niche.required_fate == "repair" for niche in environment.niches)
+
+
+def test_terminal_data_processing_task_stays_generic() -> None:
+    task = load_terminal_bench_task_from_yaml(
+        _terminal_task_yaml(
+            """
+instruction: Aggregate JSONL files and write aggregates.json.
+category: file-operations
+tags:
+  - data-processing
+parser_name: pytest
+"""
+        ),
+        task_id="jsonl-aggregator",
+    )
+    adapter = OfficialBenchmarkAdapter.for_benchmark("terminal-bench")
+
+    request = adapter.to_induction_request(task)
+    environment = adapter.to_microenvironment(task)
+
+    assert request.domain == "generic"
+    assert environment.morphogens.signal("repair_pressure") == 0.0
+    assert not any(niche.required_fate == "repair" for niche in environment.niches)
+
+
+def _terminal_task_yaml(content: str) -> Path:
+    import tempfile
+
+    directory = Path(tempfile.mkdtemp())
+    path = directory / "task.yaml"
+    path.write_text(content, encoding="utf-8")
+    return path

@@ -83,6 +83,8 @@ The official benchmark harness evaluates Ontocellia as an adaptive tissue, not a
 
 Non-BFCL runs report Ontocellia structure metrics separately from official scorer status. When an official scorer is not executed, artifacts state `official_score_status: not_run`; pass/fail is only reported after an actual official scorer command runs. Adaptive runs can compare Phase22 variants and record selected structure, repair presence, expected fate coverage, matrix reuse, provider calls, and provider-call errors.
 
+Official task induction applies repair pressure to repo-like tasks without changing cell effectors. SWE-bench Lite always uses repo-repair induction; Terminal-Bench coding, debugging, software-engineering, build, compatibility, optimization, pytest, failing, or bug tasks receive repair morphogens and a repair niche, while data-processing/file-operation tasks can remain generic.
+
 BFCL remains available as a provider/tool-call baseline because simple function calling is usually solved well by the underlying model alone. Ontocellia's main benchmark path targets harder collaborative settings such as tau-bench, Terminal-Bench, MultiAgentBench/MARBLE-style tasks, and SWE-bench-style repo repair.
 
 ## Structure Search

@@ -250,6 +250,44 @@ parser_name: pytest
     assert (tmp_path / "run" / "tissue_traces" / "debug-task" / "variants" / "baseline" / "tissue_trace.json").exists()
 
 
+def test_terminal_software_engineering_run_grows_repair_without_structure_search(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ONTOCELLIA_CONFIG_DIR", str(tmp_path / "config"))
+    save_user_config(
+        OntocelliaUserConfig(
+            models={"default": "mock", "profiles": {"mock": ModelProfile(provider="mock-llm", model="mock-llm")}}
+        )
+    )
+    source = tmp_path / "terminal-source"
+    task_dir = source / "original-tasks" / "compat-task"
+    task_dir.mkdir(parents=True)
+    (task_dir / "task.yaml").write_text(
+        """
+instruction: Modernize a legacy library, build it, and fix compatibility issues.
+category: software-engineering
+tags:
+  - coding
+  - legacy-modernization
+parser_name: pytest
+""",
+        encoding="utf-8",
+    )
+
+    OfficialBenchmarkRunner().run(
+        benchmark="terminal-bench",
+        output=tmp_path / "run",
+        model_profile="mock",
+        limit=1,
+        dry_run=False,
+        source_dir=source,
+    )
+
+    structure = json.loads((tmp_path / "run" / "structure_report.json").read_text(encoding="utf-8"))
+    metrics = structure["tasks"][0]["metrics"]
+    assert metrics["selected_variant"] == "baseline"
+    assert metrics["repair_presence"] == 1.0
+    assert metrics["expected_fate_coverage"] >= 0.75
+
+
 def test_official_runner_records_provider_errors_without_aborting(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     class TimeoutProvider:
         name = "timeout-provider"

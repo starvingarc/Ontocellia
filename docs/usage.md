@@ -303,6 +303,8 @@ python -m ontocellia official-benchmark run \
   --output artifacts/official_benchmarks/terminal_with_scorer
 ```
 
+Repo-like official tasks are induced as repair tissue. SWE-bench Lite uses repo-repair induction by default; Terminal-Bench coding, debugging, software-engineering, build, compatibility, optimization, pytest, failing, or bug tasks receive repair pressure and a repair niche. Other Terminal-Bench tasks can remain generic.
+
 BFCL is kept as a provider/tool-call baseline:
 
 ```bash
