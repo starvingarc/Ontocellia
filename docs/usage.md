@@ -286,11 +286,17 @@ Outputs include:
 - `ontocellia_summary.json`
 - per-task tissue traces under `tissue_traces/`
 
-Use `--task-id` for one specific official task, or `--full` only when you intend to run the full selected benchmark. Use `--split` for SWE-bench Lite, `--source-dir` for local Terminal-Bench or tau-bench checkouts, and `--run-official-scorer` only when the scorer is wired and intentionally requested. API keys are read from the configured model profile and are not written into artifacts.
+Use `--task-id` for one specific official task, or `--full` only when you intend to run the full selected benchmark. Use `--split` for SWE-bench Lite, `--source-dir` for local Terminal-Bench or tau-bench checkouts, and `--run-official-scorer` only when scorer execution is intentional. API keys are read from the configured model profile and are not written into artifacts.
 
 For non-BFCL runs, `official_score_status` is explicit. `not_run` means the run used official task data but only reported Ontocellia adaptive tissue metrics.
 
-To run an installed official scorer, pass an explicit command. The command is split with `shlex`, does not use a shell, and writes `official_stdout.log`, `official_stderr.log`, and `scoring_status.json`.
+With `--run-official-scorer` and no explicit command, Ontocellia uses benchmark-aware scorer adapters:
+
+- SWE-bench Lite writes `official_scorer_predictions.jsonl` and `official_scorer_plan.json`, then runs the official harness when the `swebench` package is installed.
+- Terminal-Bench writes an `adapter_required` plan because official scoring needs a custom Terminal-Bench agent adapter that can drive Ontocellia.
+- tau-bench writes an `adapter_required` plan because official scoring needs an interactive tool-agent adapter.
+
+To run a local scorer command directly, pass `--official-scorer-command`. The command is split with `shlex`, does not use a shell, and writes `official_stdout.log`, `official_stderr.log`, and `scoring_status.json`.
 
 ```bash
 python -m ontocellia official-benchmark run \
@@ -303,7 +309,7 @@ python -m ontocellia official-benchmark run \
   --output artifacts/official_benchmarks/terminal_with_scorer
 ```
 
-Repo-like official tasks are induced as repair tissue. SWE-bench Lite uses repo-repair induction by default; Terminal-Bench coding, debugging, software-engineering, build, compatibility, optimization, pytest, failing, or bug tasks receive repair pressure and a repair niche. Other Terminal-Bench tasks can remain generic.
+Repo-like official tasks are induced as repair tissue. SWE-bench Lite uses repo-repair induction by default; Terminal-Bench coding, debugging, software-engineering, compatibility, pytest, failing, regression, fix, or bug tasks receive repair pressure and a repair niche. Other Terminal-Bench tasks can remain generic.
 
 BFCL is kept as a provider/tool-call baseline:
 

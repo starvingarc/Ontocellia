@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import ast
+import importlib.util
 import json
 import re
 import shlex
 import subprocess
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -52,6 +54,22 @@ class AdaptiveBenchmarkReport:
     summary_path: Path
     structure_path: Path
     report_path: Path
+
+
+@dataclass(slots=True)
+class OfficialScorerPlan:
+    benchmark: str
+    scorer: str
+    status: str
+    command: str
+    cwd: str
+    reason: str
+    predictions_path: str | None = None
+    requirements: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
+
+    def as_dict(self) -> dict[str, Any]:
+        return asdict(self)
 
 
 @dataclass(slots=True)
@@ -185,6 +203,9 @@ class AdaptiveTissueBenchmarkRunner:
         official_scorer_command: str | None = None,
         official_scorer_timeout: float = 300.0,
         official_scorer_cwd: str | Path | None = None,
+        split: str = "test",
+        source_dir: str | Path | None = None,
+        tau_domain: str = "airline",
     ) -> None:
         self.model_profile = model_profile
         self.dry_run = dry_run
@@ -195,6 +216,9 @@ class AdaptiveTissueBenchmarkRunner:
         self.official_scorer_command = official_scorer_command
         self.official_scorer_timeout = official_scorer_timeout
         self.official_scorer_cwd = Path(official_scorer_cwd) if official_scorer_cwd is not None else None
+        self.split = split
+        self.source_dir = Path(source_dir) if source_dir is not None else None
+        self.tau_domain = tau_domain
 
     def run_tasks(self, tasks: list[AdaptiveBenchmarkTask], output: str | Path) -> AdaptiveBenchmarkReport:
         output_dir = Path(output)
@@ -234,6 +258,11 @@ class AdaptiveTissueBenchmarkRunner:
             official_scorer_command=self.official_scorer_command,
             official_scorer_timeout=self.official_scorer_timeout,
             official_scorer_cwd=self.official_scorer_cwd,
+            predictions=predictions,
+            model_profile=self.model_profile,
+            split=self.split,
+            source_dir=self.source_dir,
+            tau_domain=self.tau_domain,
         )
         _apply_scoring_to_reports(task_reports, predictions, scoring)
         for task_dir, task, metrics in task_artifacts:
@@ -311,6 +340,9 @@ class OfficialBenchmarkRunner:
                 official_scorer_command=official_scorer_command,
                 official_scorer_timeout=official_scorer_timeout,
                 official_scorer_cwd=official_scorer_cwd,
+                split=split,
+                source_dir=source_dir,
+                tau_domain=tau_domain,
             ).run_tasks(tasks, output)
         if benchmark != "bfcl":
             raise ValueError(f"{benchmark} only supports adaptive-tissue mode")
@@ -860,16 +892,210 @@ def _finalize_scoring_status(
     official_scorer_command: str | None,
     official_scorer_timeout: float,
     official_scorer_cwd: Path | None,
+    predictions: list[dict[str, Any]],
+    model_profile: str | None,
+    split: str,
+    source_dir: Path | None,
+    tau_domain: str,
 ) -> dict[str, Any]:
-    if not run_official_scorer or not official_scorer_command:
+    if not run_official_scorer:
         return _scoring_status(tasks, run_official_scorer, official_scorer_command)
-    return _run_official_scorer_command(
+    if official_scorer_command:
+        return _run_official_scorer_command(
+            benchmark=tasks[0].source_benchmark if tasks else "adaptive",
+            command=official_scorer_command,
+            output_dir=output_dir,
+            timeout=official_scorer_timeout,
+            cwd=official_scorer_cwd or Path.cwd(),
+        )
+    return _run_official_scorer_adapter(
         benchmark=tasks[0].source_benchmark if tasks else "adaptive",
-        command=official_scorer_command,
         output_dir=output_dir,
+        tasks=tasks,
+        predictions=predictions,
+        model_profile=model_profile,
+        split=split,
+        source_dir=source_dir,
+        tau_domain=tau_domain,
         timeout=official_scorer_timeout,
-        cwd=official_scorer_cwd or Path.cwd(),
     )
+
+
+def _run_official_scorer_adapter(
+    *,
+    benchmark: str,
+    output_dir: Path,
+    tasks: list[AdaptiveBenchmarkTask],
+    predictions: list[dict[str, Any]],
+    model_profile: str | None,
+    split: str,
+    source_dir: Path | None,
+    tau_domain: str,
+    timeout: float,
+) -> dict[str, Any]:
+    plan = _official_scorer_plan(
+        benchmark=benchmark,
+        output_dir=output_dir,
+        tasks=tasks,
+        predictions=predictions,
+        model_profile=model_profile,
+        split=split,
+        source_dir=source_dir,
+        tau_domain=tau_domain,
+    )
+    _write_json(output_dir / "official_scorer_plan.json", plan.as_dict())
+    if plan.status != "ready":
+        return {
+            "benchmark": benchmark,
+            "official_score_status": plan.status,
+            "scorer": plan.scorer,
+            "command": plan.command,
+            "cwd": plan.cwd,
+            "scorer_pass_rate": 0.0,
+            "reason": plan.reason,
+            "requirements": list(plan.requirements),
+            "predictions_path": plan.predictions_path,
+        }
+    return _run_official_scorer_command(
+        benchmark=benchmark,
+        command=plan.command,
+        output_dir=output_dir,
+        timeout=timeout,
+        cwd=Path(plan.cwd),
+    )
+
+
+def _official_scorer_plan(
+    *,
+    benchmark: str,
+    output_dir: Path,
+    tasks: list[AdaptiveBenchmarkTask],
+    predictions: list[dict[str, Any]],
+    model_profile: str | None,
+    split: str,
+    source_dir: Path | None,
+    tau_domain: str,
+) -> OfficialScorerPlan:
+    if benchmark == "swe-bench-lite":
+        predictions_path = _write_swe_bench_predictions(output_dir, predictions, model_profile)
+        command = " ".join(
+            [
+                shlex.quote(sys.executable),
+                "-m",
+                "swebench.harness.run_evaluation",
+                "--dataset_name",
+                shlex.quote(SWE_BENCH_LITE_DATASET),
+                "--split",
+                shlex.quote(split),
+                "--predictions_path",
+                shlex.quote(str(predictions_path)),
+                "--max_workers",
+                "1",
+                "--run_id",
+                shlex.quote("ontocellia"),
+            ]
+        )
+        if not _module_available("swebench"):
+            return OfficialScorerPlan(
+                benchmark,
+                "swebench.harness.run_evaluation",
+                "adapter_unavailable",
+                command,
+                str(Path.cwd()),
+                "SWE-bench scorer adapter is configured, but the swebench package is not installed in this environment.",
+                predictions_path=str(predictions_path),
+                requirements=["pip install swe-bench", "Docker-compatible SWE-bench harness runtime"],
+            )
+        return OfficialScorerPlan(
+            benchmark,
+            "swebench.harness.run_evaluation",
+            "ready",
+            command,
+            str(Path.cwd()),
+            "SWE-bench official harness command is ready.",
+            predictions_path=str(predictions_path),
+        )
+    if benchmark == "terminal-bench":
+        root = source_dir or Path("artifacts") / "official_sources" / "terminal-bench"
+        command = " ".join(
+            [
+                "tb",
+                "run",
+                "--dataset-path",
+                shlex.quote(str(root / "original-tasks")),
+                "--agent-import-path",
+                "ontocellia.official_terminal_agent:OntocelliaTerminalAgent",
+                "--output-path",
+                shlex.quote(str(output_dir / "official_scorer")),
+            ]
+        )
+        return OfficialScorerPlan(
+            benchmark,
+            "terminal-bench",
+            "adapter_required",
+            command,
+            str(root),
+            "Terminal-Bench custom agent adapter is required before the official scorer can drive Ontocellia end-to-end.",
+            requirements=["terminal-bench CLI", "Ontocellia Terminal-Bench custom agent adapter"],
+        )
+    if benchmark == "tau-bench":
+        root = source_dir or Path("artifacts") / "official_sources" / "tau-bench"
+        command = " ".join(
+            [
+                shlex.quote(sys.executable),
+                "run.py",
+                "--domain",
+                shlex.quote(tau_domain),
+                "--agent-strategy",
+                "tool-calling",
+                "--model",
+                shlex.quote(model_profile or "ontocellia"),
+            ]
+        )
+        return OfficialScorerPlan(
+            benchmark,
+            "tau-bench",
+            "adapter_required",
+            command,
+            str(root),
+            "tau-bench requires an interactive tool-agent adapter that exposes Ontocellia as the environment-facing agent.",
+            requirements=["tau-bench official repo", "Ontocellia interactive tool-agent adapter"],
+        )
+    return OfficialScorerPlan(
+        benchmark,
+        "unsupported",
+        "unsupported",
+        "",
+        str(Path.cwd()),
+        f"No official scorer adapter is available for benchmark: {benchmark}.",
+    )
+
+
+def _write_swe_bench_predictions(output_dir: Path, predictions: list[dict[str, Any]], model_profile: str | None) -> Path:
+    path = output_dir / "official_scorer_predictions.jsonl"
+    rows = [
+        {
+            "instance_id": str(item.get("id", "")),
+            "model_name_or_path": f"ontocellia/{model_profile or 'mock'}",
+            "model_patch": _patch_from_actions(list(item.get("actions") or [])),
+        }
+        for item in predictions
+    ]
+    _write_jsonl(path, rows)
+    return path
+
+
+def _patch_from_actions(actions: list[Any]) -> str:
+    for action in actions:
+        data = action.as_dict() if hasattr(action, "as_dict") else dict(action)
+        payload = data.get("payload", {})
+        if isinstance(payload, dict) and payload.get("patch"):
+            return str(payload["patch"])
+    return ""
+
+
+def _module_available(name: str) -> bool:
+    return importlib.util.find_spec(name) is not None
 
 
 def _run_official_scorer_command(*, benchmark: str, command: str, output_dir: Path, timeout: float, cwd: Path) -> dict[str, Any]:

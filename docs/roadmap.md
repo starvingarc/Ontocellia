@@ -29,21 +29,22 @@ Ontocellia is being built as a framework-first developmental agent tissue system
 - Phase 24: Official benchmark structure-search integration
 - Phase 25: Official scorer execution wrapper
 - Phase 26: Benchmark-induced repair specialization
+- Phase 27: Official scorer adapters
 
 ## Benchmark Feedback Roadmap
 
-- Phase 27: Official scorer adapters
-  Replace generic scorer commands with benchmark-aware wrappers for supported SWE-bench, Terminal-Bench, tau-bench, and BFCL scoring flows.
+- Phase 28: Official custom agent adapters
+  Implement environment-facing custom agent adapters for Terminal-Bench and tau-bench so their official scorers can drive Ontocellia directly.
 
 ## Adaptive Structure Roadmap
 
-- Phase 28: Cell / gene / matrix contribution attribution
+- Phase 29: Cell / gene / matrix contribution attribution
   Trace which cells, gene-expression events, handoffs, tool results, and matrix records contributed to success or failure.
-- Phase 29: Resource competition and population pressure
+- Phase 30: Resource competition and population pressure
   Add energy, token, latency, tool-cost, and population-cap pressure so proliferation, differentiation, and survival compete under real constraints.
-- Phase 30: Developmental annealing and reprogramming control
+- Phase 31: Developmental annealing and reprogramming control
   Preserve early structural diversity, increase fate lock as evidence stabilizes, and allow local reprogramming after repeated failure.
-- Phase 31: Selection solidification v2
+- Phase 32: Selection solidification v2
   Solidify repeatedly effective tissue structures, induction priors, and gene-regulatory biases into reusable developmental tendencies.
 
 ## Deferred

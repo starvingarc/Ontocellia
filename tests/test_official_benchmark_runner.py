@@ -379,6 +379,72 @@ def test_official_scorer_command_records_failed_run(tmp_path: Path) -> None:
     assert "bad scorer" in (tmp_path / "official_stdout.log").read_text(encoding="utf-8")
 
 
+def test_swe_bench_official_scorer_adapter_writes_prediction_file_and_plan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("ontocellia.framework.official_benchmark._module_available", lambda name: False)
+    task = AdaptiveBenchmarkTask(
+        id="django__django-12345",
+        source_benchmark="swe-bench-lite",
+        prompt="Fix a regression in Django.",
+        metadata={"repo": "django/django", "tests": ["tests/test_regression.py::test_case"]},
+    )
+
+    result = AdaptiveTissueBenchmarkRunner(dry_run=True, run_official_scorer=True).run_tasks([task], tmp_path)
+
+    scoring = json.loads((tmp_path / "scoring_status.json").read_text(encoding="utf-8"))
+    plan = json.loads((tmp_path / "official_scorer_plan.json").read_text(encoding="utf-8"))
+    predictions = [
+        json.loads(line)
+        for line in (tmp_path / "official_scorer_predictions.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    summary = json.loads(result.summary_path.read_text(encoding="utf-8"))
+    assert scoring["official_score_status"] == "adapter_unavailable"
+    assert scoring["scorer"] == "swebench.harness.run_evaluation"
+    assert plan["benchmark"] == "swe-bench-lite"
+    assert "swebench.harness.run_evaluation" in plan["command"]
+    assert predictions[0]["instance_id"] == "django__django-12345"
+    assert "model_patch" in predictions[0]
+    assert summary["average_final_task_success"] == 0.0
+
+
+def test_terminal_bench_scorer_adapter_requires_custom_agent_adapter(tmp_path: Path) -> None:
+    task = AdaptiveBenchmarkTask(
+        id="terminal-custom-agent",
+        source_benchmark="terminal-bench",
+        prompt="Complete the task in a terminal sandbox.",
+        metadata={"check_command": "official terminal-bench parser: pytest"},
+    )
+
+    AdaptiveTissueBenchmarkRunner(dry_run=True, run_official_scorer=True).run_tasks([task], tmp_path)
+
+    scoring = json.loads((tmp_path / "scoring_status.json").read_text(encoding="utf-8"))
+    plan = json.loads((tmp_path / "official_scorer_plan.json").read_text(encoding="utf-8"))
+    assert scoring["official_score_status"] == "adapter_required"
+    assert scoring["scorer"] == "terminal-bench"
+    assert "--agent-import-path" in plan["command"]
+    assert "Terminal-Bench custom agent adapter" in scoring["reason"]
+
+
+def test_tau_bench_scorer_adapter_requires_interactive_agent_adapter(tmp_path: Path) -> None:
+    task = AdaptiveBenchmarkTask(
+        id="airline-test-2",
+        source_benchmark="tau-bench",
+        prompt="Help the user change a flight reservation.",
+        metadata={"tau_domain": "airline", "expected_action_names": ["update_reservation"]},
+    )
+
+    AdaptiveTissueBenchmarkRunner(dry_run=True, run_official_scorer=True, tau_domain="airline").run_tasks([task], tmp_path)
+
+    scoring = json.loads((tmp_path / "scoring_status.json").read_text(encoding="utf-8"))
+    plan = json.loads((tmp_path / "official_scorer_plan.json").read_text(encoding="utf-8"))
+    assert scoring["official_score_status"] == "adapter_required"
+    assert scoring["scorer"] == "tau-bench"
+    assert "--agent-strategy" in plan["command"]
+    assert "interactive tool-agent adapter" in scoring["reason"]
+
+
 def test_provider_baseline_scores_bfcl_mock_predictions(tmp_path: Path) -> None:
     tasks = [
         {
