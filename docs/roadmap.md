@@ -30,11 +30,7 @@ Ontocellia is being built as a framework-first developmental agent tissue system
 - Phase 25: Official scorer execution wrapper
 - Phase 26: Benchmark-induced repair specialization
 - Phase 27: Official scorer adapters
-
-## Benchmark Feedback Roadmap
-
-- Phase 28: Official custom agent adapters
-  Implement environment-facing custom agent adapters for Terminal-Bench and tau-bench so their official scorers can drive Ontocellia directly.
+- Phase 28: Official custom agent adapters for Terminal-Bench and tau-bench bridge flows
 
 ## Adaptive Structure Roadmap
 

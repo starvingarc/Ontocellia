@@ -49,6 +49,7 @@ from .llm import ActionIntent, CellPrompt, CellPromptBuilder, EffectorRuntime, L
 from .mcp import MCPInterfaceAdapter, MCPPromptSpec, MCPResourceSpec, MCPServerSpec, MCPToolResult, MCPToolSpec
 from .model_config import ModelProfile, OntocelliaUserConfig, config_path, load_user_config, resolve_effector_provider, save_user_config
 from .mutation import MutationCandidate, MutationCandidateGenerator, MutationSelectionReport, MutationSelectionRuntime, write_mutation_outputs
+from .official_agents import OfficialAgentRunConfig, OfficialAgentRunResult, openai_compatible_bridge_completion, run_official_terminal_agent
 from .official_benchmark import OfficialBenchmarkRunResult, OfficialBenchmarkRunner
 from .output import OutputDigest, OutputMetabolismPolicy, OutputMetabolismRuntime, digest_output
 from .selection import OrganFeedbackSignal, OrganSelectionField, OrganSelectionReport, OrganSelectionTarget, OrganValidationResult
@@ -137,6 +138,8 @@ __all__ = [
     "OpenAICompatibleProvider",
     "OfficialBenchmarkRunResult",
     "OfficialBenchmarkRunner",
+    "OfficialAgentRunConfig",
+    "OfficialAgentRunResult",
     "OrganFeedbackSignal",
     "OrganSelectionField",
     "OrganSelectionReport",
@@ -167,6 +170,8 @@ __all__ = [
     "load_user_config",
     "resolve_effector_provider",
     "run_repo_repair_demo",
+    "run_official_terminal_agent",
     "save_user_config",
     "write_mutation_outputs",
+    "openai_compatible_bridge_completion",
 ]

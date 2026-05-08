@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from ontocellia.framework.execution import ToolPolicy
 from ontocellia.framework.interactive import InteractiveTissueSession
 from ontocellia.framework.llm import MockLLMProvider
+from ontocellia.framework.official_agents import openai_compatible_bridge_completion
 
 
 @dataclass(slots=True)
@@ -98,6 +99,10 @@ def create_app(
     @app.get("/health")
     async def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.post("/v1/chat/completions")
+    async def chat_completions(payload: dict[str, Any]) -> dict[str, Any]:
+        return openai_compatible_bridge_completion(payload, output_root=manager.output_root / "bridge_sessions")
 
     @app.get("/projects")
     async def list_projects() -> dict[str, list[dict[str, Any]]]:

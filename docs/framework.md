@@ -83,7 +83,15 @@ The official benchmark harness evaluates Ontocellia as an adaptive tissue, not a
 
 Non-BFCL runs report Ontocellia structure metrics separately from official scorer status. When an official scorer is not executed, artifacts state `official_score_status: not_run`; pass/fail is only reported after an actual official scorer command runs. Adaptive runs can compare Phase22 variants and record selected structure, repair presence, expected fate coverage, matrix reuse, provider calls, and provider-call errors.
 
-Phase27 adds benchmark-aware scorer adapters. SWE-bench Lite writes a SWE-style prediction file and an official harness command plan; the scorer runs only when the harness dependency is installed. Terminal-Bench and tau-bench now emit explicit `adapter_required` scorer plans because their official evaluators need an environment-facing custom agent adapter rather than a static prediction JSONL. The generic `--official-scorer-command` escape hatch remains available for local experiments.
+Phase27 adds benchmark-aware scorer adapters. SWE-bench Lite writes a SWE-style prediction file and an official harness command plan; the scorer runs only when the harness dependency is installed. The generic `--official-scorer-command` escape hatch remains available for local experiments.
+
+## Official Agent Adapters
+
+Phase28 exposes Ontocellia through official harness-facing agent boundaries without adding benchmark-specific cell fates or effectors.
+
+Terminal-Bench can import `ontocellia.official_terminal_agent:OntocelliaTerminalAgent` through its custom `BaseAgent` path. The adapter turns a terminal task into normal Ontocellia induction, single-stem development, mock or configured intent generation, and a bounded set of terminal commands through the official session object. Artifacts are written under the harness logging directory.
+
+tau-bench-style tool-calling harnesses can point at the app server's OpenAI-compatible `/v1/chat/completions` bridge. The bridge accepts chat messages and tool schemas, runs the request through an Ontocellia tissue, and returns a standard assistant message or tool call. Tool names are drawn from the provided tool schema and receptor/interface constraints; airline or retail domain behavior is not hard-coded into the effector.
 
 Official task induction applies repair pressure to repo-like tasks without changing cell effectors. SWE-bench Lite always uses repo-repair induction; Terminal-Bench coding, debugging, software-engineering, compatibility, pytest, failing, regression, fix, or bug tasks receive repair morphogens and a repair niche, while generic data-processing/file-operation tasks can remain generic even when their instructions mention testing.
 

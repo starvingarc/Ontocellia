@@ -186,6 +186,9 @@ def build_parser() -> argparse.ArgumentParser:
     official_run.add_argument("--official-scorer-command")
     official_run.add_argument("--official-scorer-timeout", type=float, default=300.0)
     official_run.add_argument("--official-scorer-cwd", type=Path)
+    official_run.add_argument("--official-agent-adapter", choices=["terminal-bench", "tool-call-bridge", "auto"], default="auto")
+    official_run.add_argument("--bridge-url")
+    official_run.add_argument("--max-agent-steps", type=int, default=8)
     official_run.add_argument("--output", type=Path, default=Path("artifacts/official_benchmarks/bfcl/run"))
 
     structure_parser = subparsers.add_parser("structure-search", help="Run deterministic tissue structure variant search.")
@@ -492,6 +495,9 @@ def run_official_benchmark(args: argparse.Namespace) -> None:
             official_scorer_command=args.official_scorer_command,
             official_scorer_timeout=args.official_scorer_timeout,
             official_scorer_cwd=args.official_scorer_cwd,
+            official_agent_adapter=args.official_agent_adapter,
+            bridge_url=args.bridge_url,
+            max_agent_steps=args.max_agent_steps,
         )
     except ValueError as error:
         raise SystemExit(str(error)) from error

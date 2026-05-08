@@ -182,3 +182,44 @@ def test_server_cli_parser_defaults_to_localhost() -> None:
     assert args.command == "server"
     assert args.host == "127.0.0.1"
     assert args.port == 8765
+
+
+def test_openai_compatible_bridge_returns_chat_completion_message(tmp_path: Path) -> None:
+    client = make_client(tmp_path)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "ontocellia-bridge",
+            "messages": [{"role": "user", "content": "Help the user follow policy and inspect context."}],
+        },
+    )
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["object"] == "chat.completion"
+    assert payload["choices"][0]["message"]["role"] == "assistant"
+    assert payload["choices"][0]["message"]["content"]
+    assert "api_key" not in response.text.lower()
+
+
+def test_openai_compatible_bridge_returns_allowed_tool_call(tmp_path: Path) -> None:
+    client = make_client(tmp_path)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "ontocellia-bridge",
+            "messages": [{"role": "user", "content": "Look up the order and update it if policy allows."}],
+            "tools": [
+                {"type": "function", "function": {"name": "lookup_order", "parameters": {"type": "object"}}},
+                {"type": "function", "function": {"name": "update_order", "parameters": {"type": "object"}}},
+            ],
+        },
+    )
+
+    message = response.json()["choices"][0]["message"]
+    tool_calls = message["tool_calls"]
+    assert response.status_code == 200
+    assert tool_calls
+    assert tool_calls[0]["function"]["name"] in {"lookup_order", "update_order"}

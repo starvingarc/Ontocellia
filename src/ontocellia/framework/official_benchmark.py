@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import importlib.util
 import json
+import os
 import re
 import shlex
 import subprocess
@@ -67,6 +68,7 @@ class OfficialScorerPlan:
     predictions_path: str | None = None
     requirements: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    environment: dict[str, str] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -206,6 +208,9 @@ class AdaptiveTissueBenchmarkRunner:
         split: str = "test",
         source_dir: str | Path | None = None,
         tau_domain: str = "airline",
+        official_agent_adapter: str = "auto",
+        bridge_url: str | None = None,
+        max_agent_steps: int = 8,
     ) -> None:
         self.model_profile = model_profile
         self.dry_run = dry_run
@@ -219,6 +224,9 @@ class AdaptiveTissueBenchmarkRunner:
         self.split = split
         self.source_dir = Path(source_dir) if source_dir is not None else None
         self.tau_domain = tau_domain
+        self.official_agent_adapter = official_agent_adapter
+        self.bridge_url = bridge_url
+        self.max_agent_steps = max_agent_steps
 
     def run_tasks(self, tasks: list[AdaptiveBenchmarkTask], output: str | Path) -> AdaptiveBenchmarkReport:
         output_dir = Path(output)
@@ -263,6 +271,9 @@ class AdaptiveTissueBenchmarkRunner:
             split=self.split,
             source_dir=self.source_dir,
             tau_domain=self.tau_domain,
+            official_agent_adapter=self.official_agent_adapter,
+            bridge_url=self.bridge_url,
+            max_agent_steps=self.max_agent_steps,
         )
         _apply_scoring_to_reports(task_reports, predictions, scoring)
         for task_dir, task, metrics in task_artifacts:
@@ -325,6 +336,9 @@ class OfficialBenchmarkRunner:
         official_scorer_command: str | None = None,
         official_scorer_timeout: float = 300.0,
         official_scorer_cwd: str | Path | None = None,
+        official_agent_adapter: str = "auto",
+        bridge_url: str | None = None,
+        max_agent_steps: int = 8,
     ) -> OfficialBenchmarkRunResult | AdaptiveBenchmarkReport:
         selected_mode = mode or ("provider-baseline" if benchmark == "bfcl" else "adaptive-tissue")
         if not full and limit is None and task_id is None:
@@ -343,6 +357,9 @@ class OfficialBenchmarkRunner:
                 split=split,
                 source_dir=source_dir,
                 tau_domain=tau_domain,
+                official_agent_adapter=official_agent_adapter,
+                bridge_url=bridge_url,
+                max_agent_steps=max_agent_steps,
             ).run_tasks(tasks, output)
         if benchmark != "bfcl":
             raise ValueError(f"{benchmark} only supports adaptive-tissue mode")
@@ -897,6 +914,9 @@ def _finalize_scoring_status(
     split: str,
     source_dir: Path | None,
     tau_domain: str,
+    official_agent_adapter: str,
+    bridge_url: str | None,
+    max_agent_steps: int,
 ) -> dict[str, Any]:
     if not run_official_scorer:
         return _scoring_status(tasks, run_official_scorer, official_scorer_command)
@@ -917,6 +937,9 @@ def _finalize_scoring_status(
         split=split,
         source_dir=source_dir,
         tau_domain=tau_domain,
+        official_agent_adapter=official_agent_adapter,
+        bridge_url=bridge_url,
+        max_agent_steps=max_agent_steps,
         timeout=official_scorer_timeout,
     )
 
@@ -931,6 +954,9 @@ def _run_official_scorer_adapter(
     split: str,
     source_dir: Path | None,
     tau_domain: str,
+    official_agent_adapter: str,
+    bridge_url: str | None,
+    max_agent_steps: int,
     timeout: float,
 ) -> dict[str, Any]:
     plan = _official_scorer_plan(
@@ -942,6 +968,9 @@ def _run_official_scorer_adapter(
         split=split,
         source_dir=source_dir,
         tau_domain=tau_domain,
+        official_agent_adapter=official_agent_adapter,
+        bridge_url=bridge_url,
+        max_agent_steps=max_agent_steps,
     )
     _write_json(output_dir / "official_scorer_plan.json", plan.as_dict())
     if plan.status != "ready":
@@ -955,6 +984,7 @@ def _run_official_scorer_adapter(
             "reason": plan.reason,
             "requirements": list(plan.requirements),
             "predictions_path": plan.predictions_path,
+            "environment": dict(plan.environment),
         }
     return _run_official_scorer_command(
         benchmark=benchmark,
@@ -962,6 +992,7 @@ def _run_official_scorer_adapter(
         output_dir=output_dir,
         timeout=timeout,
         cwd=Path(plan.cwd),
+        environment=plan.environment,
     )
 
 
@@ -975,6 +1006,9 @@ def _official_scorer_plan(
     split: str,
     source_dir: Path | None,
     tau_domain: str,
+    official_agent_adapter: str,
+    bridge_url: str | None,
+    max_agent_steps: int,
 ) -> OfficialScorerPlan:
     if benchmark == "swe-bench-lite":
         predictions_path = _write_swe_bench_predictions(output_dir, predictions, model_profile)
@@ -1025,10 +1059,22 @@ def _official_scorer_plan(
                 shlex.quote(str(root / "original-tasks")),
                 "--agent-import-path",
                 "ontocellia.official_terminal_agent:OntocelliaTerminalAgent",
+                "--agent-kwargs",
+                shlex.quote(json.dumps({"max_steps": max_agent_steps, "use_mock": model_profile in {None, "mock"}})),
                 "--output-path",
                 shlex.quote(str(output_dir / "official_scorer")),
             ]
         )
+        if _module_available("terminal_bench"):
+            return OfficialScorerPlan(
+                benchmark,
+                "terminal-bench",
+                "ready",
+                command,
+                str(root),
+                "Terminal-Bench official custom agent command is ready.",
+                requirements=["terminal-bench CLI"],
+            )
         return OfficialScorerPlan(
             benchmark,
             "terminal-bench",
@@ -1040,26 +1086,50 @@ def _official_scorer_plan(
         )
     if benchmark == "tau-bench":
         root = source_dir or Path("artifacts") / "official_sources" / "tau-bench"
+        env = {}
+        if bridge_url:
+            env = {"OPENAI_BASE_URL": bridge_url, "OPENAI_API_KEY": "ontocellia-local-bridge"}
         command = " ".join(
             [
                 shlex.quote(sys.executable),
                 "run.py",
-                "--domain",
+                "--env",
                 shlex.quote(tau_domain),
                 "--agent-strategy",
                 "tool-calling",
                 "--model",
-                shlex.quote(model_profile or "ontocellia"),
+                "ontocellia-bridge",
+                "--model-provider",
+                "openai",
+                "--user-model",
+                shlex.quote(model_profile or "gpt-4o"),
+                "--user-model-provider",
+                "openai",
+                "--user-strategy",
+                "llm",
+                "--max-concurrency",
+                "1",
             ]
         )
+        if bridge_url:
+            return OfficialScorerPlan(
+                benchmark,
+                "tau-bench",
+                "ready",
+                command,
+                str(root),
+                "tau-bench command is ready to use the Ontocellia OpenAI-compatible bridge.",
+                requirements=["tau-bench official repo", "running Ontocellia bridge server"],
+                environment=env,
+            )
         return OfficialScorerPlan(
             benchmark,
             "tau-bench",
-            "adapter_required",
+            "bridge_required",
             command,
             str(root),
-            "tau-bench requires an interactive tool-agent adapter that exposes Ontocellia as the environment-facing agent.",
-            requirements=["tau-bench official repo", "Ontocellia interactive tool-agent adapter"],
+            "tau-bench requires an OpenAI-compatible bridge URL before the official scorer can drive Ontocellia.",
+            requirements=["tau-bench official repo", "python -m ontocellia server --host 127.0.0.1 --port 8765"],
         )
     return OfficialScorerPlan(
         benchmark,
@@ -1098,7 +1168,15 @@ def _module_available(name: str) -> bool:
     return importlib.util.find_spec(name) is not None
 
 
-def _run_official_scorer_command(*, benchmark: str, command: str, output_dir: Path, timeout: float, cwd: Path) -> dict[str, Any]:
+def _run_official_scorer_command(
+    *,
+    benchmark: str,
+    command: str,
+    output_dir: Path,
+    timeout: float,
+    cwd: Path,
+    environment: dict[str, str] | None = None,
+) -> dict[str, Any]:
     started = time.perf_counter()
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "official_command.sh").write_text(command + "\n", encoding="utf-8")
@@ -1110,6 +1188,7 @@ def _run_official_scorer_command(*, benchmark: str, command: str, output_dir: Pa
             text=True,
             timeout=timeout,
             shell=False,
+            env={**os.environ, **(environment or {})},
         )
         stdout = completed.stdout
         stderr = completed.stderr
@@ -1130,6 +1209,7 @@ def _run_official_scorer_command(*, benchmark: str, command: str, output_dir: Pa
         "scorer": "external_command",
         "command": command,
         "cwd": str(cwd),
+        "environment": dict(environment or {}),
         "exit_code": exit_code,
         "scorer_pass_rate": 1.0 if status == "run" else 0.0,
         "latency_seconds": round(time.perf_counter() - started, 6),

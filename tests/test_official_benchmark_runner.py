@@ -427,6 +427,37 @@ def test_terminal_bench_scorer_adapter_requires_custom_agent_adapter(tmp_path: P
     assert "Terminal-Bench custom agent adapter" in scoring["reason"]
 
 
+def test_terminal_bench_scorer_adapter_is_ready_when_terminal_bench_is_available(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    task = AdaptiveBenchmarkTask(
+        id="terminal-ready-agent",
+        source_benchmark="terminal-bench",
+        prompt="Complete the task in a terminal sandbox.",
+        metadata={"check_command": "official terminal-bench parser: pytest"},
+    )
+    monkeypatch.setattr("ontocellia.framework.official_benchmark._module_available", lambda name: name == "terminal_bench")
+    monkeypatch.setattr(
+        "ontocellia.framework.official_benchmark._run_official_scorer_command",
+        lambda **kwargs: {
+            "benchmark": "terminal-bench",
+            "official_score_status": "run",
+            "scorer": "terminal-bench",
+            "scorer_pass_rate": 1.0,
+            "reason": "stubbed scorer",
+        },
+    )
+
+    AdaptiveTissueBenchmarkRunner(dry_run=True, run_official_scorer=True).run_tasks([task], tmp_path)
+
+    plan = json.loads((tmp_path / "official_scorer_plan.json").read_text(encoding="utf-8"))
+    scoring = json.loads((tmp_path / "scoring_status.json").read_text(encoding="utf-8"))
+    assert plan["status"] == "ready"
+    assert "--agent-import-path" in plan["command"]
+    assert "ontocellia.official_terminal_agent:OntocelliaTerminalAgent" in plan["command"]
+    assert scoring["official_score_status"] == "run"
+
+
 def test_tau_bench_scorer_adapter_requires_interactive_agent_adapter(tmp_path: Path) -> None:
     task = AdaptiveBenchmarkTask(
         id="airline-test-2",
@@ -439,10 +470,43 @@ def test_tau_bench_scorer_adapter_requires_interactive_agent_adapter(tmp_path: P
 
     scoring = json.loads((tmp_path / "scoring_status.json").read_text(encoding="utf-8"))
     plan = json.loads((tmp_path / "official_scorer_plan.json").read_text(encoding="utf-8"))
-    assert scoring["official_score_status"] == "adapter_required"
+    assert scoring["official_score_status"] == "bridge_required"
     assert scoring["scorer"] == "tau-bench"
     assert "--agent-strategy" in plan["command"]
-    assert "interactive tool-agent adapter" in scoring["reason"]
+    assert "OpenAI-compatible bridge" in scoring["reason"]
+
+
+def test_tau_bench_scorer_adapter_is_ready_with_bridge_url(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    task = AdaptiveBenchmarkTask(
+        id="airline-test-3",
+        source_benchmark="tau-bench",
+        prompt="Help the user change a flight reservation.",
+        metadata={"tau_domain": "airline", "expected_action_names": ["update_reservation"]},
+    )
+    monkeypatch.setattr(
+        "ontocellia.framework.official_benchmark._run_official_scorer_command",
+        lambda **kwargs: {
+            "benchmark": "tau-bench",
+            "official_score_status": "run",
+            "scorer": "tau-bench",
+            "scorer_pass_rate": 1.0,
+            "reason": "stubbed scorer",
+        },
+    )
+
+    AdaptiveTissueBenchmarkRunner(
+        dry_run=True,
+        run_official_scorer=True,
+        tau_domain="airline",
+        bridge_url="http://127.0.0.1:8765/v1",
+    ).run_tasks([task], tmp_path)
+
+    plan = json.loads((tmp_path / "official_scorer_plan.json").read_text(encoding="utf-8"))
+    scoring = json.loads((tmp_path / "scoring_status.json").read_text(encoding="utf-8"))
+    assert plan["status"] == "ready"
+    assert plan["environment"]["OPENAI_BASE_URL"] == "http://127.0.0.1:8765/v1"
+    assert "--agent-strategy" in plan["command"]
+    assert scoring["official_score_status"] == "run"
 
 
 def test_provider_baseline_scores_bfcl_mock_predictions(tmp_path: Path) -> None:

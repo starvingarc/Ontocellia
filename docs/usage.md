@@ -293,8 +293,8 @@ For non-BFCL runs, `official_score_status` is explicit. `not_run` means the run 
 With `--run-official-scorer` and no explicit command, Ontocellia uses benchmark-aware scorer adapters:
 
 - SWE-bench Lite writes `official_scorer_predictions.jsonl` and `official_scorer_plan.json`, then runs the official harness when the `swebench` package is installed.
-- Terminal-Bench writes an `adapter_required` plan because official scoring needs a custom Terminal-Bench agent adapter that can drive Ontocellia.
-- tau-bench writes an `adapter_required` plan because official scoring needs an interactive tool-agent adapter.
+- Terminal-Bench writes a command plan using `--agent-import-path ontocellia.official_terminal_agent:OntocelliaTerminalAgent`; when the official package is installed the plan is `ready`.
+- tau-bench writes `bridge_required` until a local Ontocellia OpenAI-compatible bridge URL is supplied.
 
 To run a local scorer command directly, pass `--official-scorer-command`. The command is split with `shlex`, does not use a shell, and writes `official_stdout.log`, `official_stderr.log`, and `scoring_status.json`.
 
@@ -307,6 +307,30 @@ python -m ontocellia official-benchmark run \
   --run-official-scorer \
   --official-scorer-command "tb run --dataset-path artifacts/official_sources/terminal-bench/original-tasks --task-id example" \
   --output artifacts/official_benchmarks/terminal_with_scorer
+```
+
+Terminal-Bench can also drive Ontocellia through the official custom agent import path:
+
+```bash
+tb run \
+  --dataset-path artifacts/official_sources/terminal-bench/original-tasks \
+  --agent-import-path ontocellia.official_terminal_agent:OntocelliaTerminalAgent
+```
+
+For tau-bench-style tool-calling harnesses, start the local app server and pass its OpenAI-compatible base URL to the official benchmark runner:
+
+```bash
+python -m ontocellia server --host 127.0.0.1 --port 8765
+
+python -m ontocellia official-benchmark run \
+  --benchmark tau-bench \
+  --model-profile deepseek \
+  --limit 1 \
+  --mode adaptive-tissue \
+  --tau-domain airline \
+  --run-official-scorer \
+  --bridge-url http://127.0.0.1:8765/v1 \
+  --output artifacts/official_benchmarks/tau_bridge
 ```
 
 Repo-like official tasks are induced as repair tissue. SWE-bench Lite uses repo-repair induction by default; Terminal-Bench coding, debugging, software-engineering, compatibility, pytest, failing, regression, fix, or bug tasks receive repair pressure and a repair niche. Other Terminal-Bench tasks can remain generic.
