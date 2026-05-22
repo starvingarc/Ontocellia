@@ -2,6 +2,8 @@
 
 The communication layer lets cells coordinate without turning the tissue into a centrally planned agent runner. It combines short-lived messages with durable extracellular matrix records.
 
+This document is a developer reference for matrix memory, handoffs, context retrieval, and context/output metabolism. For command recipes, see [usage.md](usage.md).
+
 ## Concepts
 
 - `TissueMessage`: short-lived communication emitted by a cell.
@@ -13,6 +15,14 @@ The communication layer lets cells coordinate without turning the tissue into a 
 - `HandoffRequest`: explicit transfer of work from one cell to a target fate.
 - `HandoffReceipt`: traceable acceptance of a handoff by a recipient cell.
 - `CommunicationPolicy`: routing and promotion limits.
+
+## Common Tuning Tasks
+
+- Limit prompt context size with `communication.context_budget_chars`.
+- Limit matrix retrieval breadth with `communication.matrix_query_limit`.
+- Turn matrix remodeling on or off with `communication.context_metabolism.enabled`.
+- Inspect cell context provenance through `llm_effector` trace events and `ActionIntent.payload.context_record_ids`.
+- Inspect condensed records through `context_metabolite_deposited` and `context_metabolism` events.
 
 ## Routing
 
@@ -134,3 +144,21 @@ Existing `matrix: {}` input remains valid.
 Detailed delivery, matrix, and handoff events are in `tissue_trace.json`.
 LLM effector events additionally include `context_record_ids` so an intent can be traced back to the exact matrix records that shaped it.
 Context metabolism adds `context_metabolite_deposited` and `context_metabolism` events to the same trace.
+
+## Output Metabolism Metadata
+
+Tool execution and validation hooks can produce long stdout, stderr, or evidence. Output metabolism keeps result JSON and prompt context bounded while preserving raw artifacts. When output exceeds the inline budget, raw text is written under `raw_outputs/` and inline evidence becomes a deterministic digest.
+
+Matrix records deposited from tool and validation results include metadata such as:
+
+```json
+{
+  "raw_output_path": "raw_outputs/tool-0-evidence.txt",
+  "raw_output_chars": 20480,
+  "digest_kind": "execution",
+  "truncated": true,
+  "source_result_id": "tool-0"
+}
+```
+
+`tissue_summary.json` also reports `raw_outputs`, `truncated_outputs`, and `output_digest_chars` so users can see whether a run produced large external output.

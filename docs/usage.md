@@ -32,6 +32,7 @@ Useful TUI commands:
 ```text
 /setup
 /models
+/config
 /new <task>
 /run [ticks]
 /step
@@ -39,12 +40,17 @@ Useful TUI commands:
 /intents
 /matrix
 /handoffs
+/tools
 /report
+/benchmark
 /mock
+/clear
 /exit
 ```
 
-TTY launches use the Textual/Rich TUI. Non-TTY input falls back to the lightweight boxed shell for script compatibility. You can also force the TUI with:
+`/agents`, `/intents`, `/matrix`, `/handoffs`, `/tools`, `/report`, and `/config` refresh the corresponding panels and record the selected view in the event feed. Non-TTY input uses a lightweight boxed shell for script compatibility.
+
+You can also force the Textual/Rich TUI with:
 
 ```bash
 python -m ontocellia tui
@@ -66,7 +72,10 @@ Core endpoints:
 GET  /health
 GET  /projects
 GET  /projects/{project}/sessions
+POST /v1/chat/completions
 POST /sessions
+GET  /sessions
+GET  /sessions/{id}
 POST /sessions/{id}/task
 POST /sessions/{id}/change-medium
 POST /sessions/{id}/run
@@ -79,6 +88,7 @@ GET  /sessions/{id}/handoffs
 GET  /sessions/{id}/tools
 GET  /sessions/{id}/tool-approvals
 POST /sessions/{id}/tool-approvals
+GET  /sessions/{id}/artifacts/{name}
 WS   /sessions/{id}/events
 ```
 
@@ -93,8 +103,11 @@ Non-interactive equivalents are available:
 ```bash
 python -m ontocellia config setup
 python -m ontocellia config models list
+python -m ontocellia config models status
+python -m ontocellia config models add
 python -m ontocellia config models set deepseek
 python -m ontocellia config models test deepseek
+python -m ontocellia config validate
 python -m ontocellia config get models.default
 python -m ontocellia config file
 ```
@@ -206,7 +219,7 @@ python -m ontocellia mutate \
 
 The input genome is never overwritten. If candidate validation does not improve, `solidified_genome.yaml` contains the original genome and the report marks the decision as `not_selected`.
 
-## Complete Demo
+## Reference End-To-End Demo
 
 The deterministic repo repair demo writes induced specs, tissue trace, mock LLM intents, validation evidence, mutation outputs, and a final report.
 
@@ -259,9 +272,9 @@ Outputs:
 - `selected_variant.json`
 - per-variant tissue summaries, traces, and action intents under `variants/`
 
-## Run Adaptive Benchmark Data
+## Run Official Benchmark Data
 
-Official benchmark runs use upstream task shapes and evaluate Ontocellia as a tissue. The default mode for non-BFCL benchmarks is `adaptive-tissue`.
+Official benchmark runs use upstream task shapes and report Ontocellia tissue metrics separately from external scorer status. The default mode for non-BFCL benchmarks is `adaptive-tissue`.
 
 ```bash
 python -m ontocellia official-benchmark run \
@@ -286,54 +299,7 @@ Outputs include:
 - `ontocellia_summary.json`
 - per-task tissue traces under `tissue_traces/`
 
-Use `--task-id` for one specific official task, or `--full` only when you intend to run the full selected benchmark. Use `--split` for SWE-bench Lite, `--source-dir` for local Terminal-Bench or tau-bench checkouts, and `--run-official-scorer` only when scorer execution is intentional. API keys are read from the configured model profile and are not written into artifacts.
-
-For non-BFCL runs, `official_score_status` is explicit. `not_run` means the run used official task data but only reported Ontocellia adaptive tissue metrics.
-
-With `--run-official-scorer` and no explicit command, Ontocellia uses benchmark-aware scorer adapters:
-
-- SWE-bench Lite writes `official_scorer_predictions.jsonl` and `official_scorer_plan.json`, then runs the official harness when the `swebench` package is installed.
-- Terminal-Bench writes a command plan using `--agent-import-path ontocellia.official_terminal_agent:OntocelliaTerminalAgent`; when the official package is installed the plan is `ready`.
-- tau-bench writes `bridge_required` until a local Ontocellia OpenAI-compatible bridge URL is supplied.
-
-To run a local scorer command directly, pass `--official-scorer-command`. The command is split with `shlex`, does not use a shell, and writes `official_stdout.log`, `official_stderr.log`, and `scoring_status.json`.
-
-```bash
-python -m ontocellia official-benchmark run \
-  --benchmark terminal-bench \
-  --model-profile deepseek \
-  --limit 1 \
-  --mode adaptive-tissue \
-  --run-official-scorer \
-  --official-scorer-command "tb run --dataset-path artifacts/official_sources/terminal-bench/original-tasks --task-id example" \
-  --output artifacts/official_benchmarks/terminal_with_scorer
-```
-
-Terminal-Bench can also drive Ontocellia through the official custom agent import path:
-
-```bash
-tb run \
-  --dataset-path artifacts/official_sources/terminal-bench/original-tasks \
-  --agent-import-path ontocellia.official_terminal_agent:OntocelliaTerminalAgent
-```
-
-For tau-bench-style tool-calling harnesses, start the local app server and pass its OpenAI-compatible base URL to the official benchmark runner:
-
-```bash
-python -m ontocellia server --host 127.0.0.1 --port 8765
-
-python -m ontocellia official-benchmark run \
-  --benchmark tau-bench \
-  --model-profile deepseek \
-  --limit 1 \
-  --mode adaptive-tissue \
-  --tau-domain airline \
-  --run-official-scorer \
-  --bridge-url http://127.0.0.1:8765/v1 \
-  --output artifacts/official_benchmarks/tau_bridge
-```
-
-Repo-like official tasks are induced as repair tissue. SWE-bench Lite uses repo-repair induction by default; Terminal-Bench coding, debugging, software-engineering, compatibility, pytest, failing, regression, fix, or bug tasks receive repair pressure and a repair niche. Other Terminal-Bench tasks can remain generic.
+Use `--task-id` for one specific official task, or `--full` only when you intend to run the full selected benchmark. Use `--run-official-scorer` when external scorer execution is intentional. See [official-benchmarks.md](official-benchmarks.md) for Terminal-Bench custom agent, tau-bench bridge, SWE-bench scorer, and custom scorer details.
 
 BFCL is kept as a provider/tool-call baseline:
 
@@ -378,30 +344,14 @@ python -m ontocellia tissue \
   --output artifacts/execution_allowed
 ```
 
-Ontocellia does not commit, push, install dependencies, or download benchmark data from the execution layer.
-
-Phase16 also writes:
+The execution layer only performs work allowed by the active policy. It does not commit, push, install dependencies, or download benchmark data as part of action execution. It writes:
 
 - `tool_invocations.json`
 - `tool_results.json`
 - `execution_results.json` for compatibility
+- matrix records containing execution evidence
 
-Long tool and validation output is handled by output metabolism. When output exceeds the inline budget, full raw text is written under `raw_outputs/`, while result JSON and matrix records keep a bounded digest:
-
-```json
-{
-  "evidence": "[output digest]\nkind: execution\nraw_chars: 20480\ntruncated: true\nraw_output_path: raw_outputs/tool-0-evidence.txt\n...",
-  "output_digest": {
-    "kind": "execution",
-    "raw_chars": 20480,
-    "inline_chars": 12000,
-    "truncated": true,
-    "raw_output_path": "raw_outputs/tool-0-evidence.txt"
-  }
-}
-```
-
-`tissue_summary.json` includes `raw_outputs`, `truncated_outputs`, and `output_digest_chars`. Matrix records deposited from tool execution include matching metadata such as `raw_output_path`, `raw_output_chars`, `digest_kind`, `truncated`, and `source_result_id`.
+Long tool and validation output is handled by output metabolism. Full raw text goes under `raw_outputs/`; result JSON and matrix records keep bounded digests plus artifact references. See [communication.md](communication.md) for context and output metadata details.
 
 Additional adapter gates are explicit:
 
@@ -421,46 +371,7 @@ python -m ontocellia tissue \
 
 MCP, HTTP, and browser adapters are disabled until their specific policy flags are present. Browser support is currently an adapter boundary for future richer automation.
 
-## Inspect Context Homeostasis
-
-Cells receive bounded matrix context instead of the full tissue history. Inspect `tissue_trace.json` for `llm_effector` events:
-
-```json
-{
-  "type": "llm_effector",
-  "context_record_ids": ["execution-1", "matrix-2"]
-}
-```
-
-The corresponding prompt context contains `relevant_matrix`, and the emitted `ActionIntent.payload.context_record_ids` keeps the same references. Matrix records in `tissue_summary.json` and `tissue_trace.json` expose lifecycle fields such as `status`, `validation_status`, `references`, `salience`, `corrects_record_id`, and `metadata`.
-
-Context metabolism runs during development after validation and organ feedback. It deposits compact metabolite records into the matrix while preserving raw evidence. Look for `context_metabolite_deposited` and `context_metabolism` events:
-
-```json
-{
-  "type": "context_metabolite_deposited",
-  "kind": "context_metabolite",
-  "metadata": {
-    "metabolite_kind": "failure_signature",
-    "source_record_ids": ["validation-1", "execution-2"],
-    "source_trace_event_ids": ["trace:12"],
-    "compression_level": "metabolite",
-    "lossiness": "bounded",
-    "source_count": 2,
-    "scope": "validation"
-  }
-}
-```
-
-Prompt context keeps compatibility while separating synthesized and raw context:
-
-```json
-{
-  "relevant_matrix": [{ "id": "context-failure_signature-1" }],
-  "context_metabolites": [{ "id": "context-failure_signature-1" }],
-  "raw_context_record_ids": ["validation-1", "execution-2"]
-}
-```
+## Inspect Context
 
 Use `communication.context_budget_chars` and `communication.context_metabolism` in an environment spec to tune approximate context size and matrix remodeling:
 
@@ -476,6 +387,8 @@ communication:
     min_source_records: 2
     source_salience_decay: 0.15
 ```
+
+Cells receive bounded matrix context instead of the full tissue history. Inspect `tissue_trace.json` for `llm_effector`, `context_metabolite_deposited`, and `context_metabolism` events. See [communication.md](communication.md) for record lifecycle fields, context packets, and output digest metadata.
 
 ## LLM Effectors
 
@@ -501,7 +414,7 @@ Real providers are optional. API keys are read from environment variables and ar
 | `ollama` | `OLLAMA_API_KEY` | `http://localhost:11434/v1` |
 | `custom-openai-compatible` | `ONTOCELLIA_CUSTOM_API_KEY` | configured in setup |
 
-DeepSeek setup offers the current official model IDs `deepseek-v4-flash` and `deepseek-v4-pro`.
+DeepSeek setup includes default profile choices such as `deepseek-v4-flash` and `deepseek-v4-pro`.
 
 After configuring a default model profile, use the simplified LLM effector:
 
@@ -553,7 +466,7 @@ python -m ontocellia validate \
 python -m ontocellia schema-docs --output docs/schema
 ```
 
-## Legacy Reference Runtime
+## Reference Simulation Runtime
 
 ```bash
 python -m ontocellia run --steps 20 --output artifacts/demo

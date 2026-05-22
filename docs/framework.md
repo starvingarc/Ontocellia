@@ -29,7 +29,7 @@ route messages, handoffs, and matrix deposits
 record trace and summary artifacts
 ```
 
-By default, framework tissues begin from a single `zygote-origin` stem-like cell. The runtime first enters a `proliferating` stage, expands until the minimum differentiation pool is available, then commits cells into task-induced niches. Explicit `--stem-cells N` remains available for experiments that need a larger initial reserve.
+By default, framework tissues begin from a single `stem-origin` cell. The runtime first enters a `proliferating` stage, expands until the minimum differentiation pool is available, then commits cells into task-induced niches. Explicit `--stem-cells N` remains available for experiments that need a larger initial reserve.
 
 ## Organ Selection
 
@@ -63,31 +63,31 @@ Digests preserve head, tail, error/failure/traceback lines, original character c
 
 ## MCP Adapter
 
-MCP is modeled as an extracellular interface implementation detail. MCP tools become membrane-channel interfaces, MCP resources seed extracellular matrix records, MCP prompts become induction-factor interfaces, and tool results can deposit matrix evidence plus returned morphogen signals. Phase8 does not start external MCP processes or call network tools.
+MCP is modeled as an extracellular interface implementation detail. MCP tools become membrane-channel interfaces, MCP resources seed extracellular matrix records, MCP prompts become induction-factor interfaces, and tool results can deposit matrix evidence plus returned morphogen signals.
 
 ## Mutation Selection
 
 Mutation selection turns failed validation and matrix evidence into deterministic genome mutation candidates. Candidates are shallow gene-field changes and are only solidified when candidate validation improves over the baseline. Solidified genomes retain `LineageMutation` history for auditability.
 
-## Complete Demo
+## Reference End-To-End Demo
 
-The complete repo repair demo connects induction, tissue development, mock LLM effectors, communication, validation evidence, mutation selection, and report artifacts in one deterministic workflow.
+The repo repair demo connects induction, tissue development, mock LLM effectors, communication, validation evidence, mutation selection, and report artifacts in one deterministic workflow.
 
 ## Benchmark Harness
 
 The tissue benchmark harness evaluates framework-native agent capabilities with deterministic MiniBench tasks. It scores structured intents, interface policy compliance, matrix memory, handoff completion, self-repair recovery, lineage traceability, and decentralized coordination. The first built-in suite is `ontocellia_minibench_v1`.
 
-## Adaptive Benchmark Protocol
+## Official Benchmark Integration
 
-The official benchmark harness evaluates Ontocellia as an adaptive tissue, not as a direct model wrapper. BFCL uses official data and answer scoring as a provider baseline. SWE-bench Lite loads the upstream Hugging Face split, Terminal-Bench loads upstream `task.yaml` files, and tau-bench parses upstream airline/retail task files without importing their runtime dependencies.
+The official benchmark integration layer prepares and runs selected official-compatible flows while keeping Ontocellia's adaptive tissue metrics separate from external scorer results. BFCL uses official data and answer scoring as a provider baseline. SWE-bench Lite loads the upstream Hugging Face split, Terminal-Bench loads upstream `task.yaml` files, and tau-bench parses upstream airline/retail task files without importing their runtime dependencies.
 
-Non-BFCL runs report Ontocellia structure metrics separately from official scorer status. When an official scorer is not executed, artifacts state `official_score_status: not_run`; pass/fail is only reported after an actual official scorer command runs. Adaptive runs can compare Phase22 variants and record selected structure, repair presence, expected fate coverage, matrix reuse, provider calls, and provider-call errors.
+Non-BFCL runs report Ontocellia structure metrics separately from official scorer status. When an official scorer is not executed, artifacts state `official_score_status: not_run`; pass/fail is only reported after an actual official scorer command runs. Adaptive runs can compare structure variants and record selected structure, repair presence, expected fate coverage, matrix reuse, provider calls, and provider-call errors.
 
-Phase27 adds benchmark-aware scorer adapters. SWE-bench Lite writes a SWE-style prediction file and an official harness command plan; the scorer runs only when the harness dependency is installed. The generic `--official-scorer-command` escape hatch remains available for local experiments.
+The scorer adapter layer writes benchmark-specific command plans without changing cell behavior. SWE-bench Lite writes a SWE-style prediction file and an official harness command plan; the scorer runs only when the harness dependency is installed. The generic `--official-scorer-command` escape hatch remains available for local experiments.
 
 ## Official Agent Adapters
 
-Phase28 exposes Ontocellia through official harness-facing agent boundaries without adding benchmark-specific cell fates or effectors.
+Ontocellia also exposes harness-facing agent boundaries without adding benchmark-specific cell fates or effectors.
 
 Terminal-Bench can import `ontocellia.official_terminal_agent:OntocelliaTerminalAgent` through its custom `BaseAgent` path. The adapter turns a terminal task into normal Ontocellia induction, single-stem development, mock or configured intent generation, and a bounded set of terminal commands through the official session object. Artifacts are written under the harness logging directory.
 
@@ -95,7 +95,7 @@ tau-bench-style tool-calling harnesses can point at the app server's OpenAI-comp
 
 Official task induction applies repair pressure to repo-like tasks without changing cell effectors. SWE-bench Lite always uses repo-repair induction; Terminal-Bench coding, debugging, software-engineering, compatibility, pytest, failing, regression, fix, or bug tasks receive repair morphogens and a repair niche, while generic data-processing/file-operation tasks can remain generic even when their instructions mention testing.
 
-BFCL remains available as a provider/tool-call baseline because simple function calling is usually solved well by the underlying model alone. Ontocellia's main benchmark path targets harder collaborative settings such as tau-bench, Terminal-Bench, MultiAgentBench/MARBLE-style tasks, and SWE-bench-style repo repair.
+BFCL remains available as a provider/tool-call baseline. Ontocellia's main benchmark path targets multi-step tool-calling, terminal, collaboration, and repo-repair settings such as tau-bench, Terminal-Bench, MultiAgentBench/MARBLE-style tasks, and SWE-bench-style repo repair.
 
 ## Structure Search
 

@@ -1,8 +1,10 @@
 # Roadmap
 
-Ontocellia is being built as a framework-first developmental agent tissue system. The current foundation includes genome, cell, induction, LLM effector, developmental field, organ selection, communication, context homeostasis, context metabolism, output metabolism, validation-runner, MCP-adapter, mutation-selection, complete-demo, interactive TUI, app server, single-stem development, tissue benchmark, extracellular tool runtime, adaptive benchmark protocol, and structure search layers.
+Ontocellia is being built as a framework-first developmental agent tissue system. The repository already contains the core runtime layers for genome expression, cell state, induction, LLM effectors, morphogen fields, organ feedback, communication, context metabolism, output metabolism, policy-gated tools, app-server sessions, benchmark adapters, and structure search.
 
-## Completed
+Phase numbers are historical implementation markers. Web Lab and official harness expansion were intentionally deferred while the adaptive-structure and benchmark-adapter layers were built first.
+
+## Implemented Capabilities
 
 - Phase 1: Genome layer
 - Phase 2: Cell layer
@@ -14,13 +16,13 @@ Ontocellia is being built as a framework-first developmental agent tissue system
 - Phase 7: Validation hook runner
 - Phase 8: MCP / extracellular interface adapter
 - Phase 9: Mutation-selection-solidification
-- Phase 10: Complete task tissue demo
+- Phase 10: End-to-end task tissue demo
 - Phase 11: Single-stem developmental runtime and interactive TUI
 - Phase 12: Tissue benchmark harness
 - Phase 13: Extracellular execution layer
 - Phase 14: Adaptive tissue benchmark protocol, with BFCL retained as provider baseline
 - Phase 15: Context homeostasis layer
-- Phase 16: Complete extracellular tool runtime
+- Phase 16: Extracellular tool runtime
 - Phase 17: Living tissue app server with HTTP and WebSocket APIs
 - Phase 18: Context metabolism and matrix remodeling layer
 - Phase 19: Output metabolism for tool and validation output
@@ -32,7 +34,7 @@ Ontocellia is being built as a framework-first developmental agent tissue system
 - Phase 27: Official scorer adapters
 - Phase 28: Official custom agent adapters for Terminal-Bench and tau-bench bridge flows
 
-## Adaptive Structure Roadmap
+## Upcoming Adaptive Structure Work
 
 - Phase 29: Cell / gene / matrix contribution attribution
   Trace which cells, gene-expression events, handoffs, tool results, and matrix records contributed to success or failure.
@@ -43,13 +45,13 @@ Ontocellia is being built as a framework-first developmental agent tissue system
 - Phase 32: Selection solidification v2
   Solidify repeatedly effective tissue structures, induction priors, and gene-regulatory biases into reusable developmental tendencies.
 
-## Deferred
+## Deferred Product Surfaces
 
 - Phase 20: Web Lab petri-dish frontend implementation based on the committed design concept.
-- Phase 21: Official harness expansion for tau-bench, SWE-bench Lite, Terminal-Bench, and multi-agent collaboration suites.
+- Phase 21: Broader official harness expansion for tau-bench, SWE-bench Lite, Terminal-Bench, and multi-agent collaboration suites.
 
-## Product Direction
+## Project Direction
 
-The reference simulation runtime can remain a developmental sandbox. The main product direction is an agent tissue orchestration framework with decentralized coordination, traceable self-repair, and adaptive structure formation.
+The reference simulation runtime can remain a developmental sandbox. The main framework direction is an agent tissue orchestration harness with decentralized coordination, traceable self-repair, bounded tool execution, and adaptive structure formation.
 
-Ontocellia should not assume a predesigned best agent graph. It should grow candidate structures from task pressure, metabolize evidence, apply weak selection, compare variants, and gradually converge toward task-fit tissue organizations.
+Ontocellia grows candidate structures from task pressure, metabolizes evidence, applies weak selection, compares variants, and gradually converges toward task-fit tissue organizations.

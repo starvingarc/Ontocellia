@@ -115,10 +115,7 @@ Ontocellia
 │   ├── Regulatory elements
 │   ├── Gene expression programs
 │   ├── Epigenetic marks
-│   ├── Lineage mutations
-│   ├── Tool protocol
-│   ├── Memory protocol
-│   └── Communication protocol
+│   └── Lineage mutations
 │
 ├── Cell Layer
 │   ├── AgentCell
@@ -563,13 +560,18 @@ The first practical tissue should support a small role landscape.
 
 These are fate attractors. A cell may dedifferentiate and recommit when the microenvironment changes.
 
-## 8. Specs
+## 8. Configuration Formats
 
-The framework should evolve toward three main spec families.
+Ontocellia currently has two related configuration families:
 
-### AgentGenomeSpec
+- framework YAML for `AgentGenome` and `TaskMicroenvironment`, loaded through `load_agent_genome()` and `load_task_microenvironment()`;
+- legacy/spec simulation formats, including `GenomeSpec`, `EnvironmentSpec`, and `ExperimentSpec`.
 
-Defines the shared developmental program.
+The framework YAML path is the main agent-tissue path. The simulation spec path remains useful for deterministic ablation experiments and schema documentation.
+
+### AgentGenome YAML
+
+Defines the shared developmental program for framework tissues.
 
 ```yaml
 metadata:
@@ -617,7 +619,7 @@ fate_landscape:
       inhibitors: [low_confidence]
 ```
 
-### TaskMicroenvironmentSpec
+### TaskMicroenvironment YAML
 
 Defines the task substrate and signal sources.
 
@@ -637,9 +639,9 @@ signals:
     maps_to: review_pressure
 ```
 
-### TissueExperimentSpec
+### ExperimentSpec
 
-Defines reproducible experiments for the harness.
+Defines reproducible experiments for the legacy/spec experiment harness.
 
 ```yaml
 metadata:
@@ -668,7 +670,7 @@ Fix the failing tests in this repository and preserve existing behavior.
 Initial state:
 
 ```text
-12 stem cells
+1 stem-origin cell
 shared AgentGenome
 plastic fate landscape
 ```
@@ -686,6 +688,7 @@ cost_pressure: low
 Developmental response:
 
 ```text
+the stem-origin cell proliferates into a small stem/progenitor pool
 2 cells commit to planner fate
 3 cells commit to explorer fate
 3 cells commit to repair fate
@@ -758,19 +761,20 @@ a selected differentiated cell pays reprogramming cost and returns toward a plas
 organ selection validates the regenerated function before stabilizing the new fate
 ```
 
-## 10. Near-Term Product Direction
+## 10. Current Implementation Status
 
-The existing simulation runtime can remain as a reference developmental sandbox, but the product direction should shift toward agent tissue orchestration.
+The implementation has shifted from the original simulation-centered prototype toward framework-first agent tissue orchestration. The current repository includes:
 
-Near-term milestones:
+- framework `AgentGenome` and `TaskMicroenvironment` YAML loaders;
+- single-stem tissue development with proliferation before differentiation;
+- LLM and mock effectors that emit structured `ActionIntent` records;
+- communication, handoff, extracellular matrix, context homeostasis, context metabolism, and output metabolism;
+- policy-gated extracellular tool runtime and validation hook runner;
+- mutation selection, structure search, tissue benchmark, official benchmark adapters, TUI, and app server.
 
-1. Rename public positioning from "developmental simulation framework" to "developmental agent tissue framework".
-2. Add an `AgentGenomeSpec` draft that treats genes as the lowest-level units, with morphogen affinity, expression windows, encoded responses, suppression cues, constraints, validation hooks, heritability, and regulatory elements.
-3. Add a minimal non-LLM harness demo using rule-based cells to validate tissue dynamics.
-4. Add an LLM-backed cell adapter after traces, budgets, prompts, and reproducibility hooks are defined.
-5. Build the first task tissue: failing-test repair or research synthesis.
+The reference simulation runtime remains as a developmental sandbox and experiment substrate. The main framework path is the task-induced agent tissue runtime.
 
-LLMs enter as one kind of cell execution substrate. The developmental harness remains model-agnostic enough to support LLM cells, rule cells, tool cells, evaluator cells, and memory cells.
+LLMs enter as one kind of cellular translation substrate. The developmental harness remains model-agnostic enough to support LLM cells, rule cells, tool cells, evaluator cells, and memory cells.
 
 ## 11. Open Design Questions
 

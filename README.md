@@ -25,6 +25,8 @@
 
 Ontocellia treats multi-agent collaboration as a living tissue rather than a fixed agent graph. A task becomes the culture medium: one stem-origin cell proliferates, differentiates into specialized cells, communicates through an extracellular matrix, and adapts under bounded feedback.
 
+It is a research prototype for deterministic agent-tissue orchestration, traceable context management, policy-gated tools, and benchmark adapters. The biological vocabulary is the project’s coordination model and implementation language.
+
 The framework is built around a biological metaphor with practical engineering boundaries: genes express tendencies, cells keep local context, the matrix stores shared evidence, morphogens shape task pressure, organ selection provides weak global feedback, and extracellular interfaces gate tool use.
 
 ```text
@@ -57,9 +59,10 @@ python -m ontocellia
 
 - [Usage](docs/usage.md)
 - [Framework](docs/framework.md)
+- [Official benchmark integration](docs/official-benchmarks.md)
 - [Architecture](docs/architecture.md)
 - [Design document](docs/agent-tissue-design.md)
-- [Web Lab concept](docs/web-lab-design.md)
+- [Web Lab concept and design target](docs/web-lab-design.md)
 - [Roadmap](docs/roadmap.md)
 
 ## 🛠️ Development

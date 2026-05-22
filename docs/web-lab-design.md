@@ -8,7 +8,7 @@ This document records the accepted product direction for the future Ontocellia b
 
 Ontocellia should feel like a living laboratory for task-grown agent tissues. A session is a culture dish. A task is the culture medium. Cells are decentralized agents that proliferate, differentiate, communicate, repair, and leave evidence in the extracellular matrix.
 
-The Web Lab should make that biological model visible instead of presenting a flat list of agents. Users should see how one task-induced tissue forms, how cells specialize, what they communicate, which evidence becomes shared memory, and where tool requests are waiting for approval.
+The Web Lab should make that biological model visible as more than an agent roster. Users should see how one task-induced tissue forms, how cells specialize, what they communicate, which evidence becomes shared memory, and where tool requests are waiting for approval.
 
 ## Information Architecture
 
@@ -24,7 +24,7 @@ The app should keep three levels distinct:
 
 ## Visual Direction
 
-The style is Soft Lab Console: clean, bright, glassy, calm, and slightly cute without becoming toy-like. The interface should feel precise enough for research, but warm enough that the user wants to watch the tissue grow.
+The style is Soft Lab Console: clean, bright, glassy, calm, and warm while remaining instrument-grade. The interface should feel precise enough for research and inviting enough that the user wants to watch the tissue grow.
 
 Preferred visual traits:
 
@@ -68,7 +68,7 @@ morphogen signal
 -> validation or organ feedback
 ```
 
-This causal chain is the main difference between Ontocellia and a standard chat agent UI.
+This causal chain differentiates Ontocellia from transcript-first chat UIs.
 
 ## Safety Model
 
@@ -80,7 +80,7 @@ The UI must not bypass runtime policy. Tool approval is a membrane-channel opera
 - write operations and shell commands need explicit approval;
 - dry-run remains the default.
 
-The approval queue should show pending invocations, requested interface, target, scope, rationale, requesting cell, and risk.
+The approval queue should show pending invocations, requested interface, target, scope, and requesting cell. A later UI pass can join `ToolInvocation` records with originating `ActionIntent` and `ToolResult` records to show rationale and risk estimates.
 
 ## Implementation Notes
 
