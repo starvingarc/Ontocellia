@@ -18,6 +18,7 @@ from typing import Any, Protocol
 
 import yaml
 
+from ontocellia.framework.attribution import ContributionAttributionRuntime
 from ontocellia.framework.cell import CellPosition
 from ontocellia.framework.communication import MatrixRecord
 from ontocellia.framework.core import ExtracellularInterface, MorphogenField, Niche, TaskMicroenvironment, TissueRuntime
@@ -211,6 +212,7 @@ class AdaptiveTissueBenchmarkRunner:
         official_agent_adapter: str = "auto",
         bridge_url: str | None = None,
         max_agent_steps: int = 8,
+        with_attribution: bool = False,
     ) -> None:
         self.model_profile = model_profile
         self.dry_run = dry_run
@@ -227,6 +229,7 @@ class AdaptiveTissueBenchmarkRunner:
         self.official_agent_adapter = official_agent_adapter
         self.bridge_url = bridge_url
         self.max_agent_steps = max_agent_steps
+        self.with_attribution = with_attribution
 
     def run_tasks(self, tasks: list[AdaptiveBenchmarkTask], output: str | Path) -> AdaptiveBenchmarkReport:
         output_dir = Path(output)
@@ -242,7 +245,7 @@ class AdaptiveTissueBenchmarkRunner:
             task_dir = traces_dir / task.id
             task_dir.mkdir(parents=True, exist_ok=True)
             if self.structure_search:
-                selected, variants = _run_structure_search_task(task, provider, self.steps, self.seed, scoring, task_dir)
+                selected, variants = _run_structure_search_task(task, provider, self.steps, self.seed, scoring, task_dir, self.with_attribution)
                 metrics = selected["metrics"]
                 actions = selected["actions"]
                 task_report = {"task_id": task.id, "source_benchmark": task.source_benchmark, "metrics": metrics, "variants": variants}
@@ -250,6 +253,14 @@ class AdaptiveTissueBenchmarkRunner:
                 selected = _run_single_task(task, provider, self.steps, self.seed, scoring, task_dir)
                 metrics = selected["metrics"]
                 actions = selected["actions"]
+                if self.with_attribution:
+                    attribution = ContributionAttributionRuntime().analyze(
+                        trace=selected["trace"],
+                        actions=actions,
+                    )
+                    attribution.write(task_dir / "attribution")
+                    metrics = {**metrics, "attribution": attribution.summary}
+                    selected["metrics"] = metrics
                 task_report = {"task_id": task.id, "source_benchmark": task.source_benchmark, "metrics": metrics}
             task_artifacts.append((task_dir, task, metrics))
             (task_dir / "tissue_trace.json").write_text(json.dumps(selected["trace"], indent=2, sort_keys=True), encoding="utf-8")
@@ -339,6 +350,7 @@ class OfficialBenchmarkRunner:
         official_agent_adapter: str = "auto",
         bridge_url: str | None = None,
         max_agent_steps: int = 8,
+        with_attribution: bool = False,
     ) -> OfficialBenchmarkRunResult | AdaptiveBenchmarkReport:
         selected_mode = mode or ("provider-baseline" if benchmark == "bfcl" else "adaptive-tissue")
         if not full and limit is None and task_id is None:
@@ -360,6 +372,7 @@ class OfficialBenchmarkRunner:
                 official_agent_adapter=official_agent_adapter,
                 bridge_url=bridge_url,
                 max_agent_steps=max_agent_steps,
+                with_attribution=with_attribution,
             ).run_tasks(tasks, output)
         if benchmark != "bfcl":
             raise ValueError(f"{benchmark} only supports adaptive-tissue mode")
@@ -633,6 +646,7 @@ def _run_structure_search_task(
     seed: int,
     scoring: dict[str, Any],
     task_dir: Path,
+    with_attribution: bool = False,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     variants = []
     for variant in builtin_structure_variants():
@@ -642,6 +656,13 @@ def _run_structure_search_task(
         _write_json(variant_dir / "tissue_summary.json", {"task": task.as_dict(), "metrics": result["metrics"]})
         (variant_dir / "tissue_trace.json").write_text(json.dumps(result["trace"], indent=2, sort_keys=True), encoding="utf-8")
         _write_jsonl(variant_dir / "action_intents.jsonl", result["actions"])
+        if with_attribution:
+            attribution = ContributionAttributionRuntime().analyze(
+                trace=result["trace"],
+                actions=result["actions"],
+            )
+            attribution.write(variant_dir / "attribution")
+            result["metrics"] = {**result["metrics"], "attribution": attribution.summary}
         variants.append({key: result[key] for key in ("variant", "metrics", "actions", "trace")})
     selected = sorted(variants, key=lambda item: (-_structure_selection_score(item["metrics"]), str(item["variant"])))[0]
     selected["metrics"] = {**selected["metrics"], "selected_variant": selected["variant"]}

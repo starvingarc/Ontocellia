@@ -260,6 +260,7 @@ python -m ontocellia structure-search \
   --domain repo_repair \
   --effector mock-llm \
   --steps 6 \
+  --with-attribution \
   --seed 7 \
   --output artifacts/structure_search
 ```
@@ -271,6 +272,32 @@ Outputs:
 - `structure_search_report.md`
 - `selected_variant.json`
 - per-variant tissue summaries, traces, and action intents under `variants/`
+
+When `--with-attribution` is enabled, each variant also writes an `attribution/` directory and `structure_search_summary.json` includes `selected_variant_explanation`.
+
+## Attribute A Tissue Run
+
+Attribution can also be run after the fact from saved artifacts:
+
+```bash
+python -m ontocellia attribute \
+  --trace artifacts/repo_repair_tissue/tissue_trace.json \
+  --summary artifacts/repo_repair_tissue/tissue_summary.json \
+  --output artifacts/repo_repair_tissue/attribution
+```
+
+Add `--actions`, `--tool-results`, `--execution-results`, and `--validation-results` when those files exist.
+
+Outputs:
+
+- `contribution_graph.json`
+- `contribution_summary.json`
+- `cell_contributions.csv`
+- `gene_contributions.csv`
+- `matrix_contributions.csv`
+- `contribution_report.md`
+
+For new tissue runs, add `--with-attribution` to write the same report under the tissue output directory and add an `attribution` block to `tissue_summary.json`.
 
 ## Run Official Benchmark Data
 
@@ -284,6 +311,7 @@ python -m ontocellia official-benchmark run \
   --mode adaptive-tissue \
   --tau-domain airline \
   --structure-search \
+  --with-attribution \
   --output artifacts/official_benchmarks/tau_bench/deepseek_smoke
 ```
 

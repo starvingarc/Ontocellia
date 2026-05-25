@@ -103,6 +103,14 @@ Structure search grows several deterministic tissue variants from the same task 
 
 The selection score combines validation score, fate match, matrix reuse, handoff completion, regeneration recovery, cost efficiency, and fate diversity. The selected variant is the highest-scoring tissue structure under the same seed, with stable tie-breaking by variant name.
 
+## Contribution Attribution
+
+Contribution attribution turns tissue artifacts into an inspectable causal graph. It reads live tissue state or saved `tissue_trace.json`, `action_intents.json`, tool results, execution results, validation results, and matrix references, then scores which cells, genes, matrix records, handoffs, tools, and validation signals contributed positively or negatively.
+
+The first attribution runtime is deterministic. `llm_effector` events connect cell and gene expression to emitted action intents. `context_record_ids` and matrix references connect retrieved context to later actions. Completed handoffs reward source and recipient cells, while failed or skipped tools and validations assign negative contribution to the related action, cell, and evidence path. Passed validation and low-risk tool results provide positive contribution.
+
+Attribution writes `contribution_graph.json`, `contribution_summary.json`, contribution CSVs, and a Markdown report. Tissue, structure-search, and official benchmark runs can opt in with `--with-attribution`; Web Lab can later use the graph for causal-chain visualization.
+
 ## Extracellular Tool Runtime
 
 The tool runtime sits between structured `ActionIntent` records and real local effects. It normalizes intents into `ToolInvocation` records, routes them through adapter-specific executors, and returns `ToolResult` records. The older `ExecutionRuntime` API remains as a compatibility wrapper.

@@ -8,6 +8,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from ontocellia.framework.attribution import ContributionAttributionRuntime
 from ontocellia.framework.cell import CellPosition
 from ontocellia.framework.core import Niche, TaskMicroenvironment, TissueRuntime
 from ontocellia.framework.induction import InductionRequest, TemplateInductionCompiler
@@ -70,6 +71,7 @@ class StructureSearchRunner:
         steps: int = 6,
         seed: int = 7,
         variants: list[StructureVariant] | None = None,
+        with_attribution: bool = False,
     ) -> None:
         self.task = task
         self.domain = domain
@@ -78,6 +80,7 @@ class StructureSearchRunner:
         self.steps = steps
         self.seed = seed
         self.variants = list(variants or builtin_structure_variants())
+        self.with_attribution = with_attribution
 
     def run(self, output: str | Path) -> StructureSearchReport:
         output_dir = Path(output)
@@ -152,6 +155,15 @@ class StructureSearchRunner:
         metrics = _metrics(tissue, actions, validation_results, time.perf_counter() - started)
         score = float(metrics["structure_score"])
         artifacts = _write_variant_artifacts(output_dir, tissue, actions)
+        if self.with_attribution:
+            attribution = ContributionAttributionRuntime().analyze(
+                tissue=tissue,
+                actions=actions,
+                validation_results=validation_results,
+            )
+            attribution_paths = attribution.write(output_dir / "attribution")
+            metrics = {**metrics, "attribution": attribution.summary}
+            artifacts = {**artifacts, "attribution": attribution_paths["summary"]}
         return StructureTrialResult(variant, score, metrics, artifacts, _trace_summary(tissue))
 
     def _provider(self) -> Any:
@@ -280,7 +292,7 @@ def _write_variant_artifacts(output_dir: Path, tissue: TissueRuntime, actions: l
 
 
 def _summary(task: str, domain: str, selected: StructureTrialResult, trials: list[StructureTrialResult]) -> dict[str, Any]:
-    return {
+    summary = {
         "task": task,
         "domain": domain,
         "variants": len(trials),
@@ -288,6 +300,9 @@ def _summary(task: str, domain: str, selected: StructureTrialResult, trials: lis
         "selected_score": selected.score,
         "trials": [trial.as_dict() for trial in trials],
     }
+    if isinstance(selected.metrics.get("attribution"), dict):
+        summary["selected_variant_explanation"] = selected.metrics["attribution"]
+    return summary
 
 
 def _write_csv(path: Path, trials: list[StructureTrialResult]) -> None:

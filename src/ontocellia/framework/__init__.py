@@ -39,6 +39,7 @@ from .communication import (
     MessageScope,
     TissueMessage,
 )
+from .attribution import ContributionAttributionRuntime, ContributionEdge, ContributionNode, ContributionReport, ContributionScore
 from .demo import DemoResult, run_repo_repair_demo
 from .execution import ExecutionPolicy, ExecutionRequest, ExecutionResult, ExecutionRuntime, ExtracellularToolRuntime, ToolInvocation, ToolPolicy, ToolResult
 from .genome import AgentGenome, EpigeneticMarks, ExpressedGeneProgram, ExpressionContext, Gene, LineageMutation, RegulatoryElement
@@ -81,6 +82,11 @@ __all__ = [
     "ContextMetabolismRuntime",
     "ContextPacket",
     "ContextRetrievalPolicy",
+    "ContributionAttributionRuntime",
+    "ContributionEdge",
+    "ContributionNode",
+    "ContributionReport",
+    "ContributionScore",
     "DifferentiatedCellState",
     "DemoResult",
     "EffectorRuntime",

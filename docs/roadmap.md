@@ -33,11 +33,10 @@ Phase numbers are historical implementation markers. Web Lab and official harnes
 - Phase 26: Benchmark-induced repair specialization
 - Phase 27: Official scorer adapters
 - Phase 28: Official custom agent adapters for Terminal-Bench and tau-bench bridge flows
+- Phase 29: Contribution attribution and causal trace layer
 
 ## Upcoming Adaptive Structure Work
 
-- Phase 29: Cell / gene / matrix contribution attribution
-  Trace which cells, gene-expression events, handoffs, tool results, and matrix records contributed to success or failure.
 - Phase 30: Resource competition and population pressure
   Add energy, token, latency, tool-cost, and population-cap pressure so proliferation, differentiation, and survival compete under real constraints.
 - Phase 31: Developmental annealing and reprogramming control

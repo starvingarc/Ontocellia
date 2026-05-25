@@ -21,6 +21,7 @@ from ontocellia.cli_ui import (
 from ontocellia.config import GeneAsset, GeneKind, OntocelliaConfig
 from ontocellia.experiments import ExperimentRunner
 from ontocellia.framework import (
+    ContributionAttributionRuntime,
     EffectorRuntime,
     ExecutionPolicy,
     ExecutionRuntime,
@@ -129,6 +130,7 @@ def build_parser() -> argparse.ArgumentParser:
     tissue_parser.add_argument("--enable-http-tools", action="store_true")
     tissue_parser.add_argument("--enable-browser-tools", action="store_true")
     tissue_parser.add_argument("--execution-timeout", type=float, default=60.0)
+    tissue_parser.add_argument("--with-attribution", action="store_true")
     tissue_parser.add_argument("--output", type=Path, default=Path("artifacts/tissue"))
 
     induce_parser = subparsers.add_parser("induce", help="Compile a natural language task into agent tissue specs.")
@@ -189,6 +191,7 @@ def build_parser() -> argparse.ArgumentParser:
     official_run.add_argument("--official-agent-adapter", choices=["terminal-bench", "tool-call-bridge", "auto"], default="auto")
     official_run.add_argument("--bridge-url")
     official_run.add_argument("--max-agent-steps", type=int, default=8)
+    official_run.add_argument("--with-attribution", action="store_true")
     official_run.add_argument("--output", type=Path, default=Path("artifacts/official_benchmarks/bfcl/run"))
 
     structure_parser = subparsers.add_parser("structure-search", help="Run deterministic tissue structure variant search.")
@@ -198,7 +201,17 @@ def build_parser() -> argparse.ArgumentParser:
     structure_parser.add_argument("--model-profile")
     structure_parser.add_argument("--steps", type=int, default=6)
     structure_parser.add_argument("--seed", type=int, default=7)
+    structure_parser.add_argument("--with-attribution", action="store_true")
     structure_parser.add_argument("--output", type=Path, default=Path("artifacts/structure_search"))
+
+    attribute_parser = subparsers.add_parser("attribute", help="Build contribution attribution artifacts from tissue outputs.")
+    attribute_parser.add_argument("--trace", type=Path, required=True)
+    attribute_parser.add_argument("--summary", type=Path)
+    attribute_parser.add_argument("--actions", type=Path)
+    attribute_parser.add_argument("--tool-results", type=Path)
+    attribute_parser.add_argument("--execution-results", type=Path)
+    attribute_parser.add_argument("--validation-results", type=Path)
+    attribute_parser.add_argument("--output", type=Path, required=True)
 
     subparsers.add_parser("tui", help="Start the interactive Ontocellia TUI.")
 
@@ -396,6 +409,16 @@ def run_tissue(args: argparse.Namespace) -> None:
     }
     output_stats = _output_digest_stats([*tool_results, *execution_results, *validation_results])
     summary.update(output_stats)
+    if args.with_attribution:
+        attribution = ContributionAttributionRuntime().analyze(
+            tissue=tissue,
+            actions=actions,
+            tool_results=tool_results,
+            execution_results=execution_results,
+            validation_results=validation_results,
+        )
+        attribution.write(args.output / "attribution")
+        summary["attribution"] = attribution.summary
     summary_path = args.output / "tissue_summary.json"
     trace_path = args.output / "tissue_trace.json"
     summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True), encoding="utf-8")
@@ -498,6 +521,7 @@ def run_official_benchmark(args: argparse.Namespace) -> None:
             official_agent_adapter=args.official_agent_adapter,
             bridge_url=args.bridge_url,
             max_agent_steps=args.max_agent_steps,
+            with_attribution=args.with_attribution,
         )
     except ValueError as error:
         raise SystemExit(str(error)) from error
@@ -513,9 +537,24 @@ def run_structure_search(args: argparse.Namespace) -> None:
         model_profile=args.model_profile,
         steps=args.steps,
         seed=args.seed,
+        with_attribution=args.with_attribution,
     ).run(args.output)
     print(f"Structure search written to {report.output_dir}")
     print(f"Selected variant: {report.selected_variant}")
+
+
+def run_attribute(args: argparse.Namespace) -> None:
+    report = ContributionAttributionRuntime().analyze_artifacts(
+        trace_path=args.trace,
+        summary_path=args.summary,
+        actions_path=args.actions,
+        tool_results_path=args.tool_results,
+        execution_results_path=args.execution_results,
+        validation_results_path=args.validation_results,
+    )
+    paths = report.write(args.output)
+    print(f"Contribution graph written to {paths['graph']}")
+    print(f"Contribution summary written to {paths['summary']}")
 
 
 def run_server(args: argparse.Namespace) -> None:
@@ -836,6 +875,7 @@ def main(argv: list[str] | None = None) -> None:
         "benchmark",
         "official-benchmark",
         "structure-search",
+        "attribute",
         "tui",
         "server",
         "config",
@@ -864,6 +904,8 @@ def main(argv: list[str] | None = None) -> None:
             run_official_benchmark(args)
         elif args.command == "structure-search":
             run_structure_search(args)
+        elif args.command == "attribute":
+            run_attribute(args)
         elif args.command == "tui":
             run_tui()
         elif args.command == "server":
