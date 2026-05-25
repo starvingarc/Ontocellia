@@ -111,6 +111,14 @@ The first attribution runtime is deterministic. `llm_effector` events connect ce
 
 Attribution writes `contribution_graph.json`, `contribution_summary.json`, contribution CSVs, and a Markdown report. Tissue, structure-search, and official benchmark runs can opt in with `--with-attribution`; Web Lab can later use the graph for causal-chain visualization.
 
+## Resource Competition
+
+Resource competition turns contribution and cost into weak survival pressure. Every development tick applies maintenance cost to cells, emits resource morphogens, and records a `resource_competition` event. Action intents and tool results can add additional cost, while contribution attribution can reward helpful cells or penalize failed paths.
+
+The runtime tracks average cell energy, population pressure, low-energy pressure, resource pressure, and resource efficiency. Optional policy fields can cap population, allow quiescence for low-energy differentiated cells, or allow non-origin low-energy cells to be removed under over-cap pressure. The default policy is conservative and weak, so existing tissues remain stable unless a task or experiment configures stronger pressure.
+
+Structure search and official benchmark metrics include resource efficiency, average cell energy, and population pressure, allowing tissue variants to be compared by organization and cost rather than fate coverage alone.
+
 ## Extracellular Tool Runtime
 
 The tool runtime sits between structured `ActionIntent` records and real local effects. It normalizes intents into `ToolInvocation` records, routes them through adapter-specific executors, and returns `ToolResult` records. The older `ExecutionRuntime` API remains as a compatibility wrapper.

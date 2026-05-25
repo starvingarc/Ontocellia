@@ -53,6 +53,7 @@ from .mutation import MutationCandidate, MutationCandidateGenerator, MutationSel
 from .official_agents import OfficialAgentRunConfig, OfficialAgentRunResult, openai_compatible_bridge_completion, run_official_terminal_agent
 from .official_benchmark import OfficialBenchmarkRunResult, OfficialBenchmarkRunner
 from .output import OutputDigest, OutputMetabolismPolicy, OutputMetabolismRuntime, digest_output
+from .resources import CellResourceDelta, ResourceCompetitionPolicy, ResourceCompetitionReport, ResourceCompetitionRuntime
 from .selection import OrganFeedbackSignal, OrganSelectionField, OrganSelectionReport, OrganSelectionTarget, OrganValidationResult
 from .specs import load_agent_genome, load_task_microenvironment
 from .structure_search import StructureSearchReport, StructureSearchRunner, StructureTrialResult, StructureVariant, builtin_structure_variants
@@ -72,6 +73,7 @@ __all__ = [
     "CellPrompt",
     "CellPromptBuilder",
     "CellPosition",
+    "CellResourceDelta",
     "CellStage",
     "CompetenceProfile",
     "CommunicationPolicy",
@@ -128,6 +130,9 @@ __all__ = [
     "ProgenitorCellState",
     "ReceptorProfile",
     "RegulatoryElement",
+    "ResourceCompetitionPolicy",
+    "ResourceCompetitionReport",
+    "ResourceCompetitionRuntime",
     "StemCellState",
     "StructureSearchReport",
     "StructureSearchRunner",

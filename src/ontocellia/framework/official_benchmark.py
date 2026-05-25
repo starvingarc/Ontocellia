@@ -799,6 +799,8 @@ def _structure_metrics(task: AdaptiveBenchmarkTask, tissue: TissueRuntime, actio
     fate_counts = tissue.fate_counts()
     expected_fate_coverage = _expected_fate_coverage(task, fate_counts)
     repair_presence = 1.0 if fate_counts.get("repair", 0) > 0 else 0.0
+    resource_report = tissue.last_resource_report.as_dict() if tissue.last_resource_report is not None else {}
+    resource_efficiency = float(resource_report.get("resource_efficiency", 1.0))
     return {
         "final_task_success": 0.0,
         "fate_distribution": fate_counts,
@@ -809,11 +811,25 @@ def _structure_metrics(task: AdaptiveBenchmarkTask, tissue: TissueRuntime, actio
         "validation_feedback_cycles": len(validation_cycles),
         "provider_call_count": len(provider_calls),
         "provider_call_errors": len(provider_errors),
-        "structure_efficiency": round(min(1.0, (len(fate_counts) / 5.0) * 0.25 + expected_fate_coverage * 0.25 + min(1.0, matrix_records / action_count) * 0.25 + (len(handoffs) > 0) * 0.15 + repair_presence * 0.1), 6),
+        "structure_efficiency": round(
+            min(
+                1.0,
+                (len(fate_counts) / 5.0) * 0.22
+                + expected_fate_coverage * 0.23
+                + min(1.0, matrix_records / action_count) * 0.22
+                + (len(handoffs) > 0) * 0.13
+                + repair_presence * 0.1
+                + resource_efficiency * 0.1,
+            ),
+            6,
+        ),
         "regeneration_events": sum(1 for event in events if event["type"] == "regeneration"),
         "selected_variant": selected_variant,
         "repair_presence": repair_presence,
         "expected_fate_coverage": expected_fate_coverage,
+        "average_cell_energy": float(resource_report.get("average_cell_energy", 1.0)),
+        "population_pressure": float(resource_report.get("population_pressure", 0.0)),
+        "resource_efficiency": resource_efficiency,
         "official_score_status": scoring["official_score_status"],
         "scorer_pass_rate": float(scoring.get("scorer_pass_rate", 0.0)),
         "execution_attempted": bool(execution_events),

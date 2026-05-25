@@ -9,6 +9,7 @@ from ontocellia.framework.cell import AgentCell, CellPosition, StemCellState
 from ontocellia.framework.communication import CommunicationPolicy, CommunicationRuntime, ContextHomeostasisRuntime, ContextMetabolismRuntime, ExtracellularMatrix
 from ontocellia.framework.fate import FateLandscape
 from ontocellia.framework.genome import AgentGenome, Gene
+from ontocellia.framework.resources import ResourceCompetitionPolicy, ResourceCompetitionReport, ResourceCompetitionRuntime
 from ontocellia.framework.selection import OrganFeedbackSignal, OrganSelectionField, OrganSelectionReport, OrganSelectionTarget, OrganValidationResult
 from ontocellia.framework.topology import TissueTopology
 
@@ -132,6 +133,7 @@ class TaskMicroenvironment:
     fate_landscape: FateLandscape = field(default_factory=FateLandscape.default)
     selection_targets: OrganSelectionTarget = field(default_factory=OrganSelectionTarget)
     organ_feedback: OrganFeedbackSignal | None = None
+    resource_policy: ResourceCompetitionPolicy = field(default_factory=ResourceCompetitionPolicy)
     matrix: ExtracellularMatrix | dict[str, Any] = field(default_factory=ExtracellularMatrix)
     communication_policy: CommunicationPolicy = field(default_factory=CommunicationPolicy)
     mcp_adapter: Any | None = None
@@ -170,6 +172,8 @@ class TissueRuntime:
     next_cell_id: int = 0
     organ_selection_field: OrganSelectionField | None = field(default_factory=OrganSelectionField)
     last_organ_selection_report: OrganSelectionReport | None = None
+    resource_runtime: ResourceCompetitionRuntime | None = field(default_factory=ResourceCompetitionRuntime)
+    last_resource_report: ResourceCompetitionReport | None = None
     communication_runtime: CommunicationRuntime | None = field(default_factory=CommunicationRuntime)
     development_stage: str = "proliferating"
     origin_cell_id: int = 0
@@ -216,7 +220,12 @@ class TissueRuntime:
         runtime.trace.record("seed", stem_cells=stem_cells, origin_cell_id=runtime.origin_cell_id)
         return runtime
 
-    def develop(self, ticks: int = 1, validation_results: list[OrganValidationResult] | None = None) -> None:
+    def develop(
+        self,
+        ticks: int = 1,
+        validation_results: list[OrganValidationResult] | None = None,
+        contribution_report: Any | None = None,
+    ) -> None:
         for _ in range(ticks):
             self.tick_count += 1
             self._refresh_niche_occupancy()
@@ -227,6 +236,7 @@ class TissueRuntime:
             self._update_cell_positions()
             self._age_cells()
             self._apply_organ_selection(validation_results)
+            self._apply_resource_competition(contribution_report=contribution_report, validation_results=validation_results)
             self._apply_context_metabolism()
             self.environment.morphogens.decay()
             self._update_development_stage()
@@ -282,6 +292,7 @@ class TissueRuntime:
         if effectors is not None:
             actions = [intent.as_dict() for intent in effectors.emit_intents(self)]
             self.communicate(actions)
+            self._apply_resource_competition(actions=actions)
             return actions
         actions: list[dict[str, Any]] = []
         for cell in sorted(self.cells.values(), key=lambda item: item.id):
@@ -303,10 +314,13 @@ class TissueRuntime:
                     actions.append(action)
                     self.trace.record("effector_action", **action)
         self.communicate(actions)
+        self._apply_resource_competition(actions=actions)
         return actions
 
     def execute_actions(self, actions: list[dict[str, Any]], execution_runtime: Any, policy: Any) -> list[Any]:
-        return execution_runtime.execute(self, actions, policy)
+        results = execution_runtime.execute(self, actions, policy)
+        self._apply_resource_competition(actions=actions, tool_results=results)
+        return results
 
     def communicate(self, actions: list[dict[str, Any]] | None = None) -> dict[str, list[dict[str, Any]]]:
         if (
@@ -568,6 +582,25 @@ class TissueRuntime:
         if not hasattr(self.environment, "matrix") or not hasattr(self.environment, "communication_policy"):
             return
         ContextMetabolismRuntime().metabolize(self)
+
+    def _apply_resource_competition(
+        self,
+        *,
+        contribution_report: Any | None = None,
+        actions: list[dict[str, Any]] | None = None,
+        tool_results: list[Any] | None = None,
+        validation_results: list[OrganValidationResult] | None = None,
+    ) -> None:
+        if self.resource_runtime is None:
+            return
+        self.resource_runtime.apply(
+            self,
+            policy=getattr(self.environment, "resource_policy", None),
+            contribution_report=contribution_report,
+            actions=actions,
+            tool_results=tool_results,
+            validation_results=validation_results,
+        )
 
 
 def _embedding_distance(left: tuple[float, float, float], right: tuple[float, float, float]) -> float:

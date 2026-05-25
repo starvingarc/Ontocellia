@@ -418,6 +418,25 @@ communication:
 
 Cells receive bounded matrix context instead of the full tissue history. Inspect `tissue_trace.json` for `llm_effector`, `context_metabolite_deposited`, and `context_metabolism` events. See [communication.md](communication.md) for record lifecycle fields, context packets, and output digest metadata.
 
+## Tune Resource Competition
+
+Resource competition is enabled by default with weak maintenance cost. Configure stronger pressure in an environment spec when you want structure-search or tissue runs to penalize oversized, expensive, or low-energy organizations:
+
+```yaml
+resources:
+  population_cap: 6
+  maintenance_cost: 0.01
+  differentiated_cost: 0.02
+  action_intent_cost: 0.015
+  contribution_reward: 0.08
+  negative_contribution_penalty: 0.08
+  over_cap_pressure_weight: 0.25
+  allow_quiescence: false
+  allow_apoptosis: false
+```
+
+Tissue summaries include `resource_competition`, and traces include `resource_competition` events. Structure-search and official benchmark metrics include `resource_efficiency`, `average_cell_energy`, and `population_pressure`.
+
 ## LLM Effectors
 
 Mock LLM mode is deterministic:

@@ -34,11 +34,10 @@ Phase numbers are historical implementation markers. Web Lab and official harnes
 - Phase 27: Official scorer adapters
 - Phase 28: Official custom agent adapters for Terminal-Bench and tau-bench bridge flows
 - Phase 29: Contribution attribution and causal trace layer
+- Phase 30: Resource competition and population pressure
 
 ## Upcoming Adaptive Structure Work
 
-- Phase 30: Resource competition and population pressure
-  Add energy, token, latency, tool-cost, and population-cap pressure so proliferation, differentiation, and survival compete under real constraints.
 - Phase 31: Developmental annealing and reprogramming control
   Preserve early structural diversity, increase fate lock as evidence stabilizes, and allow local reprogramming after repeated failure.
 - Phase 32: Selection solidification v2

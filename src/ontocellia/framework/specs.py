@@ -11,6 +11,7 @@ from ontocellia.framework.core import ExtracellularInterface, MorphogenField, Mo
 from ontocellia.framework.fate import FateAttractor, FateLandscape
 from ontocellia.framework.genome import AgentGenome, EpigeneticMarks, Gene, RegulatoryElement
 from ontocellia.framework.mcp import MCPInterfaceAdapter, MCPPromptSpec, MCPResourceSpec, MCPServerSpec, MCPToolSpec
+from ontocellia.framework.resources import ResourceCompetitionPolicy
 from ontocellia.framework.selection import OrganSelectionTarget
 from ontocellia.framework.topology import TissueTopology, TopologyNode
 
@@ -61,6 +62,7 @@ def load_task_microenvironment(path: str | Path) -> TaskMicroenvironment:
         topology=_topology(data.get("topology"), niches),
         fate_landscape=_fate_landscape(data.get("fate_landscape")),
         selection_targets=_selection_targets(data.get("organ_selection")),
+        resource_policy=_resource_policy(data.get("resources")),
         matrix=_matrix(data.get("matrix")),
         communication_policy=_communication_policy(data.get("communication")),
     )
@@ -170,6 +172,30 @@ def _context_metabolism_policy(data: Any) -> ContextMetabolismPolicy:
         max_metabolite_chars=int(data.get("max_metabolite_chars", 700)),
         min_source_records=int(data.get("min_source_records", 2)),
         source_salience_decay=float(data.get("source_salience_decay", 0.15)),
+    )
+
+
+def _resource_policy(data: Any) -> ResourceCompetitionPolicy:
+    if not isinstance(data, dict):
+        return ResourceCompetitionPolicy()
+    return ResourceCompetitionPolicy(
+        enabled=bool(data.get("enabled", True)),
+        population_cap=int(data["population_cap"]) if data.get("population_cap") is not None else None,
+        maintenance_cost=float(data.get("maintenance_cost", 0.01)),
+        differentiated_cost=float(data.get("differentiated_cost", 0.01)),
+        action_intent_cost=float(data.get("action_intent_cost", 0.015)),
+        tool_cost_weight=float(data.get("tool_cost_weight", 0.1)),
+        latency_cost_weight=float(data.get("latency_cost_weight", 0.01)),
+        contribution_reward=float(data.get("contribution_reward", 0.08)),
+        negative_contribution_penalty=float(data.get("negative_contribution_penalty", 0.08)),
+        low_energy_threshold=float(data.get("low_energy_threshold", 0.35)),
+        quiescence_threshold=float(data.get("quiescence_threshold", 0.08)),
+        apoptosis_threshold=float(data.get("apoptosis_threshold", 0.02)),
+        allow_quiescence=bool(data.get("allow_quiescence", False)),
+        allow_apoptosis=bool(data.get("allow_apoptosis", False)),
+        over_cap_pressure_weight=float(data.get("over_cap_pressure_weight", 0.25)),
+        low_energy_pressure_weight=float(data.get("low_energy_pressure_weight", 0.35)),
+        max_energy=float(data.get("max_energy", 1.2)),
     )
 
 
