@@ -35,11 +35,10 @@ Phase numbers are historical implementation markers. Web Lab and official harnes
 - Phase 28: Official custom agent adapters for Terminal-Bench and tau-bench bridge flows
 - Phase 29: Contribution attribution and causal trace layer
 - Phase 30: Resource competition and population pressure
+- Phase 31: Developmental annealing and reprogramming control
 
 ## Upcoming Adaptive Structure Work
 
-- Phase 31: Developmental annealing and reprogramming control
-  Preserve early structural diversity, increase fate lock as evidence stabilizes, and allow local reprogramming after repeated failure.
 - Phase 32: Selection solidification v2
   Solidify repeatedly effective tissue structures, induction priors, and gene-regulatory biases into reusable developmental tendencies.
 

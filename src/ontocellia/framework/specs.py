@@ -5,6 +5,7 @@ from typing import Any
 
 import yaml
 
+from ontocellia.framework.annealing import DevelopmentalAnnealingPolicy
 from ontocellia.framework.cell import CellPosition
 from ontocellia.framework.communication import CommunicationPolicy, ContextMetabolismPolicy, ExtracellularMatrix, MatrixRecord
 from ontocellia.framework.core import ExtracellularInterface, MorphogenField, MorphogenSource, Niche, TaskMicroenvironment
@@ -62,6 +63,7 @@ def load_task_microenvironment(path: str | Path) -> TaskMicroenvironment:
         topology=_topology(data.get("topology"), niches),
         fate_landscape=_fate_landscape(data.get("fate_landscape")),
         selection_targets=_selection_targets(data.get("organ_selection")),
+        annealing_policy=_annealing_policy(data.get("annealing")),
         resource_policy=_resource_policy(data.get("resources")),
         matrix=_matrix(data.get("matrix")),
         communication_policy=_communication_policy(data.get("communication")),
@@ -196,6 +198,28 @@ def _resource_policy(data: Any) -> ResourceCompetitionPolicy:
         over_cap_pressure_weight=float(data.get("over_cap_pressure_weight", 0.25)),
         low_energy_pressure_weight=float(data.get("low_energy_pressure_weight", 0.35)),
         max_energy=float(data.get("max_energy", 1.2)),
+    )
+
+
+def _annealing_policy(data: Any) -> DevelopmentalAnnealingPolicy:
+    if not isinstance(data, dict):
+        return DevelopmentalAnnealingPolicy()
+    return DevelopmentalAnnealingPolicy(
+        enabled=bool(data.get("enabled", True)),
+        warmup_ticks=int(data.get("warmup_ticks", 3)),
+        stabilization_ticks=int(data.get("stabilization_ticks", 8)),
+        initial_temperature=float(data.get("initial_temperature", 1.0)),
+        final_temperature=float(data.get("final_temperature", 0.15)),
+        diversity_pressure=float(data.get("diversity_pressure", 0.25)),
+        commitment_pressure=float(data.get("commitment_pressure", 0.35)),
+        fate_lock_min=float(data.get("fate_lock_min", 0.25)),
+        fate_lock_max=float(data.get("fate_lock_max", 0.9)),
+        fate_lock_growth=float(data.get("fate_lock_growth", 0.04)),
+        failure_unlock=float(data.get("failure_unlock", 0.12)),
+        repeated_failure_threshold=int(data.get("repeated_failure_threshold", 2)),
+        reprogramming_pressure_threshold=float(data.get("reprogramming_pressure_threshold", 0.85)),
+        reprogramming_energy_cost=float(data.get("reprogramming_energy_cost", 0.2)),
+        max_reprogramming_per_tick=int(data.get("max_reprogramming_per_tick", 1)),
     )
 
 

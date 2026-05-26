@@ -800,6 +800,7 @@ def _structure_metrics(task: AdaptiveBenchmarkTask, tissue: TissueRuntime, actio
     expected_fate_coverage = _expected_fate_coverage(task, fate_counts)
     repair_presence = 1.0 if fate_counts.get("repair", 0) > 0 else 0.0
     resource_report = tissue.last_resource_report.as_dict() if tissue.last_resource_report is not None else {}
+    annealing_report = tissue.last_annealing_report.as_dict() if tissue.last_annealing_report is not None else {}
     resource_efficiency = float(resource_report.get("resource_efficiency", 1.0))
     return {
         "final_task_success": 0.0,
@@ -830,6 +831,9 @@ def _structure_metrics(task: AdaptiveBenchmarkTask, tissue: TissueRuntime, actio
         "average_cell_energy": float(resource_report.get("average_cell_energy", 1.0)),
         "population_pressure": float(resource_report.get("population_pressure", 0.0)),
         "resource_efficiency": resource_efficiency,
+        "annealing_temperature": float(annealing_report.get("temperature", 1.0)),
+        "average_fate_lock": float(annealing_report.get("average_fate_lock", 0.0)),
+        "reprogramming_events": len(annealing_report.get("reprogrammed_cell_ids", [])),
         "official_score_status": scoring["official_score_status"],
         "scorer_pass_rate": float(scoring.get("scorer_pass_rate", 0.0)),
         "execution_attempted": bool(execution_events),

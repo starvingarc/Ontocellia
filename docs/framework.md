@@ -119,6 +119,14 @@ The runtime tracks average cell energy, population pressure, low-energy pressure
 
 Structure search and official benchmark metrics include resource efficiency, average cell energy, and population pressure, allowing tissue variants to be compared by organization and cost rather than fate coverage alone.
 
+## Developmental Annealing
+
+Developmental annealing controls how plastic or committed a tissue is over time. Early ticks keep a high temperature and emit exploration pressure, which preserves structural diversity while the single-stem tissue is still proliferating and sampling task niches. As the tissue stabilizes, temperature cools and commitment pressure rises.
+
+The annealing runtime updates differentiated-cell fate locks deterministically. Stable validation and later-stage commitment increase fate locks, while repeated validation failures reduce locks and emit reprogramming pressure. After repeated failure, a small number of local differentiated cells can be reprogrammed back to progenitor state, paying an energy cost and recording `annealing_reprogramming` trace events.
+
+Annealing is conservative by default. It does not replace regeneration or organ selection; it adds a timing layer that decides when the tissue should remain plastic, when it should solidify, and when repeated failure justifies local reprogramming.
+
 ## Extracellular Tool Runtime
 
 The tool runtime sits between structured `ActionIntent` records and real local effects. It normalizes intents into `ToolInvocation` records, routes them through adapter-specific executors, and returns `ToolResult` records. The older `ExecutionRuntime` API remains as a compatibility wrapper.

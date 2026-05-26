@@ -389,6 +389,7 @@ def run_tissue(args: argparse.Namespace) -> None:
         "proliferation_events": sum(1 for event in tissue.trace.events if event["type"] == "proliferation"),
         "niche_occupancy": tissue.niche_occupancy(),
         "organ_selection": tissue.last_organ_selection_report.as_dict() if tissue.last_organ_selection_report is not None else {},
+        "annealing": tissue.last_annealing_report.as_dict() if tissue.last_annealing_report is not None else {},
         "resource_competition": tissue.last_resource_report.as_dict() if tissue.last_resource_report is not None else {},
         "validation_results": len(validation_results),
         "mcp_interfaces": sum(1 for interface in environment.interfaces if interface.id.startswith("mcp:")),

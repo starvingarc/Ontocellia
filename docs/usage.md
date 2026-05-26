@@ -437,6 +437,25 @@ resources:
 
 Tissue summaries include `resource_competition`, and traces include `resource_competition` events. Structure-search and official benchmark metrics include `resource_efficiency`, `average_cell_energy`, and `population_pressure`.
 
+## Tune Developmental Annealing
+
+Developmental annealing controls plasticity over time. Early high temperature favors exploration; later commitment raises fate locks. Repeated validation failure can unlock and reprogram a bounded number of differentiated cells:
+
+```yaml
+annealing:
+  warmup_ticks: 3
+  stabilization_ticks: 8
+  initial_temperature: 1.0
+  final_temperature: 0.15
+  fate_lock_growth: 0.04
+  failure_unlock: 0.12
+  repeated_failure_threshold: 2
+  reprogramming_pressure_threshold: 0.85
+  max_reprogramming_per_tick: 1
+```
+
+Tissue summaries include `annealing`, and traces include `developmental_annealing` plus `annealing_reprogramming` when local reprogramming occurs. Structure-search and official benchmark metrics include `annealing_temperature`, `average_fate_lock`, and `reprogramming_events`.
+
 ## LLM Effectors
 
 Mock LLM mode is deterministic:

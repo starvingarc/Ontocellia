@@ -5,6 +5,7 @@ from math import hypot
 from random import Random
 from typing import Any
 
+from ontocellia.framework.annealing import DevelopmentalAnnealingPolicy, DevelopmentalAnnealingReport, DevelopmentalAnnealingRuntime
 from ontocellia.framework.cell import AgentCell, CellPosition, StemCellState
 from ontocellia.framework.communication import CommunicationPolicy, CommunicationRuntime, ContextHomeostasisRuntime, ContextMetabolismRuntime, ExtracellularMatrix
 from ontocellia.framework.fate import FateLandscape
@@ -133,6 +134,7 @@ class TaskMicroenvironment:
     fate_landscape: FateLandscape = field(default_factory=FateLandscape.default)
     selection_targets: OrganSelectionTarget = field(default_factory=OrganSelectionTarget)
     organ_feedback: OrganFeedbackSignal | None = None
+    annealing_policy: DevelopmentalAnnealingPolicy = field(default_factory=DevelopmentalAnnealingPolicy)
     resource_policy: ResourceCompetitionPolicy = field(default_factory=ResourceCompetitionPolicy)
     matrix: ExtracellularMatrix | dict[str, Any] = field(default_factory=ExtracellularMatrix)
     communication_policy: CommunicationPolicy = field(default_factory=CommunicationPolicy)
@@ -172,6 +174,8 @@ class TissueRuntime:
     next_cell_id: int = 0
     organ_selection_field: OrganSelectionField | None = field(default_factory=OrganSelectionField)
     last_organ_selection_report: OrganSelectionReport | None = None
+    annealing_runtime: DevelopmentalAnnealingRuntime | None = field(default_factory=DevelopmentalAnnealingRuntime)
+    last_annealing_report: DevelopmentalAnnealingReport | None = None
     resource_runtime: ResourceCompetitionRuntime | None = field(default_factory=ResourceCompetitionRuntime)
     last_resource_report: ResourceCompetitionReport | None = None
     communication_runtime: CommunicationRuntime | None = field(default_factory=CommunicationRuntime)
@@ -230,6 +234,7 @@ class TissueRuntime:
             self.tick_count += 1
             self._refresh_niche_occupancy()
             self._resolve_vacancies()
+            self._apply_developmental_annealing(validation_results=validation_results)
             self._proliferate()
             if self._can_differentiate():
                 self._fill_open_niches()
@@ -577,6 +582,15 @@ class TissueRuntime:
         if validation_results:
             ContextHomeostasisRuntime().apply_validation_feedback(self.environment.matrix, validation_results, current_tick=self.tick_count)
         self.trace.record("organ_selection", tick=self.tick_count, **report.as_dict())
+
+    def _apply_developmental_annealing(self, *, validation_results: list[OrganValidationResult] | None = None) -> None:
+        if self.annealing_runtime is None:
+            return
+        self.annealing_runtime.apply(
+            self,
+            policy=getattr(self.environment, "annealing_policy", None),
+            validation_results=validation_results,
+        )
 
     def _apply_context_metabolism(self) -> None:
         if not hasattr(self.environment, "matrix") or not hasattr(self.environment, "communication_policy"):

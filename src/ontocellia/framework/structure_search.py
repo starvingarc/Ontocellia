@@ -224,6 +224,7 @@ def _metrics(tissue: TissueRuntime, actions: list[dict[str, Any]], validation_re
         "fate_diversity": fate_diversity,
     }
     resource_report = tissue.last_resource_report.as_dict() if tissue.last_resource_report is not None else {}
+    annealing_report = tissue.last_annealing_report.as_dict() if tissue.last_annealing_report is not None else {}
     resource_efficiency = float(resource_report.get("resource_efficiency", 1.0))
     score = round(
         score_parts["validation_score"] * 0.18
@@ -245,6 +246,9 @@ def _metrics(tissue: TissueRuntime, actions: list[dict[str, Any]], validation_re
         "average_cell_energy": float(resource_report.get("average_cell_energy", 1.0)),
         "population_pressure": float(resource_report.get("population_pressure", 0.0)),
         "resource_efficiency": resource_efficiency,
+        "annealing_temperature": float(annealing_report.get("temperature", 1.0)),
+        "average_fate_lock": float(annealing_report.get("average_fate_lock", 0.0)),
+        "reprogramming_events": len(annealing_report.get("reprogrammed_cell_ids", [])),
         "structure_score": score,
     }
 
@@ -264,6 +268,7 @@ def _trace_summary(tissue: TissueRuntime) -> dict[str, Any]:
         "matrix_records": len(tissue.environment.matrix.records),
         "handoffs": sum(1 for event in tissue.trace.events if event["type"] == "handoff_completed"),
         "proliferation_events": sum(1 for event in tissue.trace.events if event["type"] == "proliferation"),
+        "annealing": tissue.last_annealing_report.as_dict() if tissue.last_annealing_report is not None else {},
         "resource_competition": tissue.last_resource_report.as_dict() if tissue.last_resource_report is not None else {},
     }
 
@@ -326,6 +331,9 @@ def _write_csv(path: Path, trials: list[StructureTrialResult]) -> None:
         "resource_efficiency",
         "average_cell_energy",
         "population_pressure",
+        "annealing_temperature",
+        "average_fate_lock",
+        "reprogramming_events",
         "fate_diversity",
     ]
     with path.open("w", newline="", encoding="utf-8") as handle:

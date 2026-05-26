@@ -10,6 +10,7 @@ from .core import (
     TissueRuntime,
     TissueTrace,
 )
+from .annealing import DevelopmentalAnnealingPolicy, DevelopmentalAnnealingReport, DevelopmentalAnnealingRuntime, FateLockDelta
 from .cell import (
     AdhesionProfile,
     AgentCell,
@@ -89,6 +90,9 @@ __all__ = [
     "ContributionNode",
     "ContributionReport",
     "ContributionScore",
+    "DevelopmentalAnnealingPolicy",
+    "DevelopmentalAnnealingReport",
+    "DevelopmentalAnnealingRuntime",
     "DifferentiatedCellState",
     "DemoResult",
     "EffectorRuntime",
@@ -105,6 +109,7 @@ __all__ = [
     "FateAttractor",
     "FateDecision",
     "FateLandscape",
+    "FateLockDelta",
     "Gene",
     "HandoffReceipt",
     "HandoffRequest",
