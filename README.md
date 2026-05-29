@@ -59,6 +59,7 @@ python -m ontocellia
 
 - [Usage](docs/usage.md)
 - [Framework](docs/framework.md)
+- [Review findings](docs/review-findings.md)
 - [Official benchmark integration](docs/official-benchmarks.md)
 - [Architecture](docs/architecture.md)
 - [Design document](docs/agent-tissue-design.md)

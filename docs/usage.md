@@ -320,6 +320,35 @@ Outputs:
 
 The input genome is not modified. When selected, the output genome records the tendency in metadata and adds enhancer-style regulatory elements for matching genes.
 
+## Replay A Task Family
+
+Longitudinal replay compares Ontocellia's adaptive tissue against simpler baselines across a related task family. It is the deterministic first step toward proving whether structure search and solidification make later sessions more efficient or robust.
+
+```bash
+python -m ontocellia longitudinal-replay \
+  --task "Fix failing tests while preserving behavior." \
+  --task "Fix a regression without broad rewrites." \
+  --domain repo_repair \
+  --effector mock-llm \
+  --steps 6 \
+  --output artifacts/longitudinal_replay
+```
+
+When no `--task` values are provided, Ontocellia uses the built-in repo-repair replay family. The runner compares:
+
+- `direct_agent`
+- `single_cell`
+- `fixed_tissue`
+- `adaptive_tissue`
+
+Outputs:
+
+- `longitudinal_replay_summary.json`
+- `longitudinal_trials.csv`
+- `longitudinal_replay_report.md`
+- `solidification/solidification_report.md`
+- per-task artifacts under `tasks/<task-id>/`
+
 ## Run Official Benchmark Data
 
 Official benchmark runs use upstream task shapes and report Ontocellia tissue metrics separately from external scorer status. The default mode for non-BFCL benchmarks is `adaptive-tissue`.

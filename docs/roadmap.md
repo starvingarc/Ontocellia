@@ -4,6 +4,17 @@ Ontocellia is being built as a framework-first developmental agent tissue system
 
 Phase numbers are historical implementation markers. Web Lab and official harness expansion were intentionally deferred while the adaptive-structure and benchmark-adapter layers were built first.
 
+## Review Findings Integrated
+
+The latest repository review found that Ontocellia's strongest differentiator is now clear: it is a developmental harness for growing, comparing, explaining, and solidifying task-induced multi-agent tissues. The next risk is not lack of concepts, but lack of proof that adaptive tissue organization improves real task outcomes over simpler agent loops.
+
+The review also identified four engineering pressure points:
+
+- official benchmark outputs must distinguish Ontocellia tissue metrics from actual official scorer pass/fail;
+- execution and app-server approval paths need stricter policy ownership, secret-safe output handling, and per-invocation provenance before broader real-task use;
+- `__main__.py`, `official_benchmark.py`, and the execution/communication modules are large enough that future phases should include behavior-preserving refactors;
+- product docs should keep README concise while adding clearer first-run and concept guides for new users.
+
 ## Implemented Capabilities
 
 - Phase 1: Genome layer
@@ -37,11 +48,18 @@ Phase numbers are historical implementation markers. Web Lab and official harnes
 - Phase 30: Resource competition and population pressure
 - Phase 31: Developmental annealing and reprogramming control
 - Phase 32: Selection solidification v2
+- Phase 33: Longitudinal replay and controlled baseline comparison
 
 ## Upcoming Work
 
-- Phase 33: Real task replay and longitudinal tissue memory
-  Run repeated task families through induced tissues, reuse solidified tendencies, and compare whether later sessions need fewer cells, fewer actions, and lower resource pressure.
+- Phase 34: Controlled baseline expansion and anti-gaming metrics
+  Promote direct-agent, single-cell, fixed-tissue, and adaptive-tissue comparisons to first-class evaluation reports. Keep official success, validation pass rate, and cost-normalized success as primary metrics; matrix, handoff, and fate diversity remain explanatory secondary metrics.
+- Phase 35: Policy-governed tool approval and secret-safe execution
+  Move server approval to fixed server-side policy profiles, add per-invocation approval provenance, read-glob controls, secret redaction, and provider egress flags before running broader real workspace tasks.
+- Phase 36: Official scorer first-class loop
+  Close the SWE-bench, Terminal-Bench, and tau-bench scorer paths so official pass/fail can flow back into organ selection and longitudinal replay without benchmark-specific cell behavior.
+- Phase 37: Runtime and CLI consolidation
+  Split large command, benchmark, execution, and artifact-writing modules while preserving current behavior and tests.
 
 ## Deferred Product Surfaces
 

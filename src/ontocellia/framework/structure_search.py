@@ -82,24 +82,36 @@ class StructureSearchRunner:
         self.variants = list(variants or builtin_structure_variants())
         self.with_attribution = with_attribution
 
-    def run(self, output: str | Path) -> StructureSearchReport:
+    def run(
+        self,
+        output: str | Path,
+        *,
+        genome: Any | None = None,
+        environment: TaskMicroenvironment | None = None,
+        validation_results: list[OrganValidationResult] | None = None,
+    ) -> StructureSearchReport:
         output_dir = Path(output)
         output_dir.mkdir(parents=True, exist_ok=True)
-        draft = TemplateInductionCompiler().compile(
-            InductionRequest(
-                task=self.task,
-                domain=self.domain,
-                available_interfaces=["workspace", "pytest", "git"],
-                seed=self.seed,
+        if genome is None or environment is None:
+            draft = TemplateInductionCompiler().compile(
+                InductionRequest(
+                    task=self.task,
+                    domain=self.domain,
+                    available_interfaces=["workspace", "pytest", "git"],
+                    seed=self.seed,
+                )
             )
-        )
+            genome = genome or draft.genome
+            environment = environment or draft.environment
         provider = self._provider()
-        validation = [OrganValidationResult("structure_search", False, 0.25, self.task, "structure search pressure", 0.1, 0.25, 0.0)]
+        validation = validation_results or [
+            OrganValidationResult("structure_search", False, 0.25, self.task, "structure search pressure", 0.1, 0.25, 0.0)
+        ]
         trials = [
             self._run_variant(
                 variant,
-                draft.genome,
-                _clone_environment(draft.environment),
+                genome,
+                _clone_environment(environment),
                 provider,
                 validation,
                 output_dir / "variants" / variant.name,

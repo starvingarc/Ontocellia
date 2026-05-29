@@ -48,6 +48,7 @@ from .fate import FateAttractor, FateDecision, FateLandscape
 from .induction import InductionDraft, InductionRequest, TemplateInductionCompiler
 from .interactive import InteractiveSessionSnapshot, InteractiveTissueSession
 from .llm import ActionIntent, CellPrompt, CellPromptBuilder, EffectorRuntime, LLMResponse, MockLLMProvider, OpenAICompatibleProvider
+from .longitudinal import LongitudinalReplayReport, LongitudinalReplayRunner, ReplayTask, ReplayTrialResult, builtin_replay_tasks
 from .mcp import MCPInterfaceAdapter, MCPPromptSpec, MCPResourceSpec, MCPServerSpec, MCPToolResult, MCPToolSpec
 from .model_config import ModelProfile, OntocelliaUserConfig, config_path, load_user_config, resolve_effector_provider, save_user_config
 from .mutation import MutationCandidate, MutationCandidateGenerator, MutationSelectionReport, MutationSelectionRuntime, write_mutation_outputs
@@ -116,6 +117,8 @@ __all__ = [
     "HandoffRequest",
     "LineageRecord",
     "LineageMutation",
+    "LongitudinalReplayReport",
+    "LongitudinalReplayRunner",
     "MorphogenField",
     "MorphogenGradient",
     "MorphogenSource",
@@ -135,6 +138,8 @@ __all__ = [
     "MessageScope",
     "ProgenitorCellState",
     "ReceptorProfile",
+    "ReplayTask",
+    "ReplayTrialResult",
     "RegulatoryElement",
     "ResourceCompetitionPolicy",
     "ResourceCompetitionReport",
@@ -184,6 +189,7 @@ __all__ = [
     "ValidationHookRequest",
     "ValidationHookRunner",
     "builtin_structure_variants",
+    "builtin_replay_tasks",
     "digest_output",
     "config_path",
     "load_agent_genome",

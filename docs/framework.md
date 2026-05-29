@@ -135,6 +135,19 @@ A tendency can preserve morphogen bias, niche demand bias, population delta, and
 
 This layer keeps structure search from being a one-off comparison. Repeatedly useful repair-heavy, review-heavy, memory-heavy, or lean organizations can become reusable induction priors while retaining evidence, confidence, and report artifacts.
 
+## Longitudinal Replay
+
+Longitudinal replay is the first framework-level answer to the review question: does an adaptive tissue organization help more than a simpler agent loop?
+
+The replay runner takes a family of related tasks and evaluates four controlled conditions under the same provider class, seed family, and bounded step budget:
+
+- `direct_agent`: a minimal provider-style baseline proxy with no tissue structure.
+- `single_cell`: one Ontocellia cell handles the task through the same induction and effector path.
+- `fixed_tissue`: the induced tissue develops without structure variant search.
+- `adaptive_tissue`: structure search compares baseline, repair-heavy, review-heavy, memory-heavy, and lean tissues, then selection solidification feeds reusable tendencies into later replay sessions.
+
+The output records per-task scores, selected variants, costs, fate coverage, matrix reuse, handoff completion, and solidification decisions. It is intentionally deterministic and benchmark-agnostic. Official scorer pass/fail remains a separate layer; longitudinal replay is used to test whether Ontocellia's own adaptive structure becomes more efficient or robust across repeated task families.
+
 ## Extracellular Tool Runtime
 
 The tool runtime sits between structured `ActionIntent` records and real local effects. It normalizes intents into `ToolInvocation` records, routes them through adapter-specific executors, and returns `ToolResult` records. The older `ExecutionRuntime` API remains as a compatibility wrapper.

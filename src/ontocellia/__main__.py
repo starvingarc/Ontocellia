@@ -27,6 +27,7 @@ from ontocellia.framework import (
     ExecutionRuntime,
     ExtracellularToolRuntime,
     InductionRequest,
+    LongitudinalReplayRunner,
     MockLLMProvider,
     MutationCandidateGenerator,
     MutationSelectionRuntime,
@@ -222,6 +223,15 @@ def build_parser() -> argparse.ArgumentParser:
     solidify_parser.add_argument("--min-margin", type=float, default=0.03)
     solidify_parser.add_argument("--min-repetitions", type=int, default=1)
     solidify_parser.add_argument("--output", type=Path, default=Path("artifacts/solidification"))
+
+    replay_parser = subparsers.add_parser("longitudinal-replay", help="Run repeated task-family baselines and adaptive tissue replay.")
+    replay_parser.add_argument("--task", action="append", default=[])
+    replay_parser.add_argument("--domain", default="repo_repair")
+    replay_parser.add_argument("--effector", choices=["mock-llm", "llm"], default="mock-llm")
+    replay_parser.add_argument("--model-profile")
+    replay_parser.add_argument("--steps", type=int, default=6)
+    replay_parser.add_argument("--seed", type=int, default=7)
+    replay_parser.add_argument("--output", type=Path, default=Path("artifacts/longitudinal_replay"))
 
     subparsers.add_parser("tui", help="Start the interactive Ontocellia TUI.")
 
@@ -586,6 +596,19 @@ def run_solidify(args: argparse.Namespace) -> None:
     print(f"Solidified genome written to {paths['genome']}")
 
 
+def run_longitudinal_replay(args: argparse.Namespace) -> None:
+    report = LongitudinalReplayRunner(
+        tasks=list(args.task) if args.task else None,
+        domain=args.domain,
+        effector=args.effector,
+        model_profile=args.model_profile,
+        steps=args.steps,
+        seed=args.seed,
+    ).run(args.output)
+    print(f"Longitudinal replay summary written to {report.summary_path}")
+    print(f"Longitudinal replay report written to {report.report_path}")
+
+
 def run_server(args: argparse.Namespace) -> None:
     import uvicorn
 
@@ -906,6 +929,7 @@ def main(argv: list[str] | None = None) -> None:
         "structure-search",
         "attribute",
         "solidify",
+        "longitudinal-replay",
         "tui",
         "server",
         "config",
@@ -938,6 +962,8 @@ def main(argv: list[str] | None = None) -> None:
             run_attribute(args)
         elif args.command == "solidify":
             run_solidify(args)
+        elif args.command == "longitudinal-replay":
+            run_longitudinal_replay(args)
         elif args.command == "tui":
             run_tui()
         elif args.command == "server":
