@@ -32,6 +32,8 @@ from ontocellia.framework import (
     MutationSelectionRuntime,
     OfficialBenchmarkRunner,
     OrganValidationResult,
+    SelectionSolidificationPolicy,
+    SelectionSolidificationRuntime,
     StructureSearchRunner,
     TemplateInductionCompiler,
     TissueRuntime,
@@ -212,6 +214,14 @@ def build_parser() -> argparse.ArgumentParser:
     attribute_parser.add_argument("--execution-results", type=Path)
     attribute_parser.add_argument("--validation-results", type=Path)
     attribute_parser.add_argument("--output", type=Path, required=True)
+
+    solidify_parser = subparsers.add_parser("solidify", help="Solidify selected structure-search tendencies into a reusable genome bias.")
+    solidify_parser.add_argument("--structure-search", type=Path, required=True)
+    solidify_parser.add_argument("--genome-spec", type=Path, required=True)
+    solidify_parser.add_argument("--min-score", type=float, default=0.65)
+    solidify_parser.add_argument("--min-margin", type=float, default=0.03)
+    solidify_parser.add_argument("--min-repetitions", type=int, default=1)
+    solidify_parser.add_argument("--output", type=Path, default=Path("artifacts/solidification"))
 
     subparsers.add_parser("tui", help="Start the interactive Ontocellia TUI.")
 
@@ -559,6 +569,23 @@ def run_attribute(args: argparse.Namespace) -> None:
     print(f"Contribution summary written to {paths['summary']}")
 
 
+def run_solidify(args: argparse.Namespace) -> None:
+    genome = load_agent_genome(args.genome_spec)
+    report = SelectionSolidificationRuntime().solidify_summary_file(
+        args.structure_search,
+        genome=genome,
+        policy=SelectionSolidificationPolicy(
+            min_structure_score=float(args.min_score),
+            min_margin=float(args.min_margin),
+            min_repetitions=int(args.min_repetitions),
+        ),
+    )
+    paths = report.write(args.output)
+    print(f"Solidified tendencies written to {paths['tendencies']}")
+    print(f"Solidification report written to {paths['report']}")
+    print(f"Solidified genome written to {paths['genome']}")
+
+
 def run_server(args: argparse.Namespace) -> None:
     import uvicorn
 
@@ -878,6 +905,7 @@ def main(argv: list[str] | None = None) -> None:
         "official-benchmark",
         "structure-search",
         "attribute",
+        "solidify",
         "tui",
         "server",
         "config",
@@ -908,6 +936,8 @@ def main(argv: list[str] | None = None) -> None:
             run_structure_search(args)
         elif args.command == "attribute":
             run_attribute(args)
+        elif args.command == "solidify":
+            run_solidify(args)
         elif args.command == "tui":
             run_tui()
         elif args.command == "server":

@@ -56,6 +56,7 @@ from .official_benchmark import OfficialBenchmarkRunResult, OfficialBenchmarkRun
 from .output import OutputDigest, OutputMetabolismPolicy, OutputMetabolismRuntime, digest_output
 from .resources import CellResourceDelta, ResourceCompetitionPolicy, ResourceCompetitionReport, ResourceCompetitionRuntime
 from .selection import OrganFeedbackSignal, OrganSelectionField, OrganSelectionReport, OrganSelectionTarget, OrganValidationResult
+from .solidification import SelectionSolidificationPolicy, SelectionSolidificationReport, SelectionSolidificationRuntime, SolidifiedTendency
 from .specs import load_agent_genome, load_task_microenvironment
 from .structure_search import StructureSearchReport, StructureSearchRunner, StructureTrialResult, StructureVariant, builtin_structure_variants
 from .topology import TissueTopology, TopologyNode
@@ -138,6 +139,10 @@ __all__ = [
     "ResourceCompetitionPolicy",
     "ResourceCompetitionReport",
     "ResourceCompetitionRuntime",
+    "SelectionSolidificationPolicy",
+    "SelectionSolidificationReport",
+    "SelectionSolidificationRuntime",
+    "SolidifiedTendency",
     "StemCellState",
     "StructureSearchReport",
     "StructureSearchRunner",

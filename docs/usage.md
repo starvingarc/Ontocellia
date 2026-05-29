@@ -299,6 +299,27 @@ Outputs:
 
 For new tissue runs, add `--with-attribution` to write the same report under the tissue output directory and add an `attribution` block to `tissue_summary.json`.
 
+## Solidify A Selected Structure
+
+After structure search finds a consistently useful variant, solidification can turn that structure into reusable developmental bias:
+
+```bash
+python -m ontocellia solidify \
+  --structure-search artifacts/structure_search/structure_search_summary.json \
+  --genome-spec examples/framework/repo_repair_genome.yaml \
+  --min-score 0.65 \
+  --min-margin 0.03 \
+  --output artifacts/solidification
+```
+
+Outputs:
+
+- `solidified_tendencies.json`
+- `solidification_report.md`
+- `solidified_genome.yaml`
+
+The input genome is not modified. When selected, the output genome records the tendency in metadata and adds enhancer-style regulatory elements for matching genes.
+
 ## Run Official Benchmark Data
 
 Official benchmark runs use upstream task shapes and report Ontocellia tissue metrics separately from external scorer status. The default mode for non-BFCL benchmarks is `adaptive-tissue`.

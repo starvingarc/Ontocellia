@@ -36,11 +36,12 @@ Phase numbers are historical implementation markers. Web Lab and official harnes
 - Phase 29: Contribution attribution and causal trace layer
 - Phase 30: Resource competition and population pressure
 - Phase 31: Developmental annealing and reprogramming control
-
-## Upcoming Adaptive Structure Work
-
 - Phase 32: Selection solidification v2
-  Solidify repeatedly effective tissue structures, induction priors, and gene-regulatory biases into reusable developmental tendencies.
+
+## Upcoming Work
+
+- Phase 33: Real task replay and longitudinal tissue memory
+  Run repeated task families through induced tissues, reuse solidified tendencies, and compare whether later sessions need fewer cells, fewer actions, and lower resource pressure.
 
 ## Deferred Product Surfaces
 

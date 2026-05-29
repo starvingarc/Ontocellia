@@ -127,6 +127,14 @@ The annealing runtime updates differentiated-cell fate locks deterministically. 
 
 Annealing is conservative by default. It does not replace regeneration or organ selection; it adds a timing layer that decides when the tissue should remain plastic, when it should solidify, and when repeated failure justifies local reprogramming.
 
+## Selection Solidification
+
+Selection solidification turns successful structure-search outcomes into reusable developmental tendencies. It reads one or more structure-search summaries, checks whether the selected variant repeatedly beats baseline by a deterministic score margin, and only then writes a solidified tendency.
+
+A tendency can preserve morphogen bias, niche demand bias, population delta, and gene regulatory bias. When a selected variant has a fate-specific niche or morphogen pattern, Ontocellia adds enhancer-style regulatory elements to matching genes in a copied genome. The input genome is never overwritten.
+
+This layer keeps structure search from being a one-off comparison. Repeatedly useful repair-heavy, review-heavy, memory-heavy, or lean organizations can become reusable induction priors while retaining evidence, confidence, and report artifacts.
+
 ## Extracellular Tool Runtime
 
 The tool runtime sits between structured `ActionIntent` records and real local effects. It normalizes intents into `ToolInvocation` records, routes them through adapter-specific executors, and returns `ToolResult` records. The older `ExecutionRuntime` API remains as a compatibility wrapper.
